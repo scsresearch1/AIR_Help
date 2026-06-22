@@ -1,5 +1,5 @@
 const KAGGLE_BASE = 'https://www.kaggle.com/api/v1'
-const MAX_SEARCH_PAGES = 5
+const MAX_SEARCH_PAGES = process.env.NETLIFY === 'true' ? 2 : 5
 
 function credentials() {
   const username = process.env.KAGGLE_USERNAME?.trim()

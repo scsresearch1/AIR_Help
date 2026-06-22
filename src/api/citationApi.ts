@@ -1,3 +1,5 @@
+import { apiUrl } from '../config/api'
+
 export interface ResolvedPdfUrl {
   doi: string
   pdfUrl: string | null
@@ -7,7 +9,7 @@ export interface ResolvedPdfUrl {
 const RESOLVE_CONCURRENCY = 6
 
 export async function resolvePdfUrl(doi: string): Promise<ResolvedPdfUrl> {
-  const response = await fetch(`/api/urls?doi=${encodeURIComponent(doi)}`, {
+  const response = await fetch(apiUrl(`/api/urls?doi=${encodeURIComponent(doi)}`), {
     signal: AbortSignal.timeout(15_000),
   })
   if (!response.ok) {
@@ -41,7 +43,7 @@ export async function resolvePdfUrlsParallel(
 }
 
 export function pdfDownloadUrl(doi: string): string {
-  return `/api/pdf?doi=${encodeURIComponent(doi)}`
+  return apiUrl(`/api/pdf?doi=${encodeURIComponent(doi)}`)
 }
 
 export function canDownload(status: string, isResolving: boolean): boolean {

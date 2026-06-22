@@ -1,11 +1,12 @@
+import { apiUrl } from '../config/api'
 import type { KaggleSearchResponse } from '../lib/dataExtractionTypes'
 
 export function kaggleDownloadUrl(ref: string): string {
-  return `/api/kaggle/download?ref=${encodeURIComponent(ref)}`
+  return apiUrl(`/api/kaggle/download?ref=${encodeURIComponent(ref)}`)
 }
 
 export async function searchKaggleDatasets(query: string): Promise<KaggleSearchResponse> {
-  const response = await fetch(`/api/kaggle/search?q=${encodeURIComponent(query)}`, {
+  const response = await fetch(apiUrl(`/api/kaggle/search?q=${encodeURIComponent(query)}`), {
     signal: AbortSignal.timeout(60_000),
   })
 

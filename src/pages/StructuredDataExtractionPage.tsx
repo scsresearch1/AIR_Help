@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { downloadKaggleDataset, searchKaggleDatasets } from '../api/kaggleApi'
+import { apiUrl } from '../config/api'
 import { saveFileBlob, zipFilenameForRef } from '../lib/datasetDownload'
 import type { DatasetEntry } from '../lib/dataExtractionTypes'
 
@@ -25,7 +26,7 @@ export function StructuredDataExtractionPage() {
   entriesRef.current = entries
 
   useEffect(() => {
-    fetch('/api/health')
+    fetch(apiUrl('/api/health'))
       .then((r) => r.json())
       .then((d) => {
         setApiOk(Boolean(d.ok))
@@ -241,7 +242,14 @@ export function StructuredDataExtractionPage() {
 
         {apiOk === false && (
           <div className="data-alert data-alert--warn" role="alert">
-            API offline — run <code>npm run dev</code> to enable Kaggle search and downloads.
+            {import.meta.env.PROD ? (
+              <>
+                API offline — set environment variables in Netlify (e.g. <code>UNPAYWALL_EMAIL</code>,{' '}
+                <code>KAGGLE_USERNAME</code>, <code>KAGGLE_KEY</code>) and redeploy.
+              </>
+            ) : (
+              <>API offline — run <code>npm run dev</code> to enable Kaggle search and downloads.</>
+            )}
           </div>
         )}
 

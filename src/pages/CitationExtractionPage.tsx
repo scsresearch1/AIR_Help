@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { canDownload, pdfDownloadUrl, resolvePdfUrlsParallel } from '../api/citationApi'
+import { apiOfflineHelp, checkApiHealth } from '../config/api'
 import { downloadPdfFromUrl, pdfFilenameForDoi, savePdfBlob } from '../lib/pdfDownload'
 import { extractDois, snippetForDoi } from '../lib/doiParser'
 import type { CitationEntry } from '../lib/citationTypes'
@@ -10,16 +11,6 @@ function makeId() {
 }
 
 const DELAY_BETWEEN_DOWNLOADS_MS = 1200
-
-async function checkApiHealth(): Promise<boolean> {
-  try {
-    const response = await fetch('/api/health', { signal: AbortSignal.timeout(5000) })
-    const data = await response.json()
-    return Boolean(data.ok)
-  } catch {
-    return false
-  }
-}
 
 export function CitationExtractionPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -123,9 +114,7 @@ export function CitationExtractionPage() {
     setApiOk(apiAvailable)
 
     if (!apiAvailable) {
-      setError(
-        'Cannot reach the API server. Open the app at the URL from your terminal (e.g. http://localhost:5175) and ensure npm run dev is running.',
-      )
+      setError(apiOfflineHelp())
       setEntries(
         initial.map((e) => ({
           ...e,
@@ -147,7 +136,7 @@ export function CitationExtractionPage() {
     const apiAvailable = await checkApiHealth()
     setApiOk(apiAvailable)
     if (!apiAvailable) {
-      setError('API still offline — run npm run dev and use the localhost URL it prints.')
+      setError(apiOfflineHelp())
       return
     }
 
@@ -353,9 +342,17 @@ export function CitationExtractionPage() {
 
         {apiOk === false && (
           <div className="citation-alert citation-alert--warn" role="alert">
-            API offline — the backend on port 3001 is not reachable from this page. Run{' '}
-            <code>npm run dev</code> and open the <strong>exact localhost URL</strong> Vite prints
-            (e.g. <code>http://localhost:5175</code>), not an older tab on another port.
+            {import.meta.env.PROD ? (
+              <>
+                API offline — Netlify Functions may not be running. Add <code>UNPAYWALL_EMAIL</code>{' '}
+                in Netlify environment variables and redeploy. Check the Functions tab for errors.
+              </>
+            ) : (
+              <>
+                API offline — run <code>npm run dev</code> and open the exact localhost URL Vite
+                prints.
+              </>
+            )}
           </div>
         )}
 
