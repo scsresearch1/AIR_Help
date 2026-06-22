@@ -2,6 +2,7 @@ import './env.mjs'
 import express from 'express'
 import cors from 'cors'
 import { downloadPdfForDoi, resolveBestPdfUrl } from './pdfFromDoi.mjs'
+import { downloadDatasetZip, isKaggleConfigured, searchDatasets } from './kaggle.mjs'
 
 const app = express()
 const PORT = process.env.PORT ?? 3001
@@ -32,6 +33,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     tlsInsecure: process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0',
     unpaywall: Boolean(process.env.UNPAYWALL_EMAIL),
+    kaggle: isKaggleConfigured(),
   })
 })
 
@@ -97,9 +99,57 @@ app.get('/api/pdf', async (req, res) => {
   }
 })
 
+/** Search Kaggle datasets by topic/keyword. */
+app.get('/api/kaggle/search', async (req, res) => {
+  const q = req.query.q
+  if (!q || typeof q !== 'string') {
+    return res.status(400).json({ error: 'Missing q query parameter' })
+  }
+
+  if (!isKaggleConfigured()) {
+    return res.status(503).json({
+      error: 'Kaggle API not configured. Set KAGGLE_USERNAME and KAGGLE_KEY in .env',
+    })
+  }
+
+  try {
+    const datasets = await searchDatasets(q)
+    res.json({ query: q.trim(), count: datasets.length, datasets })
+  } catch (error) {
+    console.error('Kaggle search error:', error)
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Kaggle search failed' })
+  }
+})
+
+/** Download a Kaggle dataset archive (zip). */
+app.get('/api/kaggle/download', async (req, res) => {
+  const ref = req.query.ref
+  if (!ref || typeof ref !== 'string') {
+    return res.status(400).json({ error: 'Missing ref query parameter (owner/slug)' })
+  }
+
+  if (!isKaggleConfigured()) {
+    return res.status(503).json({
+      error: 'Kaggle API not configured. Set KAGGLE_USERNAME and KAGGLE_KEY in .env',
+    })
+  }
+
+  try {
+    const result = await downloadDatasetZip(ref)
+    const safeName = result.filename.replace(/[^\w.-]/g, '_')
+    res.setHeader('Content-Type', result.contentType)
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`)
+    res.setHeader('X-Dataset-Ref', result.ref)
+    return res.send(result.buffer)
+  } catch (error) {
+    console.error('Kaggle download error:', error)
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Kaggle download failed' })
+  }
+})
+
 app.listen(PORT, () => {
   console.log(`Citation API on http://localhost:${PORT}`)
   console.log(
-    `  TLS: ${process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ? 'relaxed' : 'strict'} | Unpaywall: ${process.env.UNPAYWALL_EMAIL ?? 'none'}`,
+    `  TLS: ${process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ? 'relaxed' : 'strict'} | Unpaywall: ${process.env.UNPAYWALL_EMAIL ?? 'none'} | Kaggle: ${isKaggleConfigured() ? 'configured' : 'not configured'}`,
   )
 })

@@ -35,10 +35,11 @@ const SERVICES = [
   {
     id: 'data-extraction',
     title: 'Structured Data Extraction',
-    description: 'Pull tables and results into structured datasets.',
-    status: 'planned' as const,
+    description: 'Search Kaggle by topic and download structured datasets.',
+    status: 'coming-soon' as const,
     tone: 'emerald' as const,
     index: '03',
+    route: '/data-extraction',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <path d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -104,23 +105,49 @@ export function LandingPage() {
           </div>
         </Link>
 
-          {rest.map((service, i) => (
-            <article
-              key={service.id}
-              className={`bento-card bento-card--${service.tone}`}
-              style={{ animationDelay: `${(i + 1) * 70}ms` }}
-            >
-              <span className="bento-card__index" aria-hidden="true">{service.index}</span>
-              <div className="bento-card__body">
-                <div className="bento-card__top">
-                  <div className="bento-card__icon">{service.icon}</div>
-                  <span className={`status-badge status-badge--${service.status}`}>Planned</span>
+          {rest.map((service, i) =>
+            service.route ? (
+              <Link
+                key={service.id}
+                to={service.route}
+                className={`bento-card bento-card--${service.tone} bento-card--link`}
+                style={{ animationDelay: `${(i + 1) * 70}ms` }}
+              >
+                <span className="bento-card__index" aria-hidden="true">
+                  {service.index}
+                </span>
+                <div className="bento-card__body">
+                  <div className="bento-card__top">
+                    <div className="bento-card__icon">{service.icon}</div>
+                    <span className="status-badge status-badge--active">Open</span>
+                  </div>
+                  <h3 className="bento-card__title">{service.title}</h3>
+                  <p className="bento-card__description">{service.description}</p>
+                  {service.id === 'data-extraction' && (
+                    <p className="bento-card__hint">Search Kaggle → select datasets → download</p>
+                  )}
                 </div>
-                <h3 className="bento-card__title">{service.title}</h3>
-                <p className="bento-card__description">{service.description}</p>
-              </div>
-            </article>
-          ))}
+              </Link>
+            ) : (
+              <article
+                key={service.id}
+                className={`bento-card bento-card--${service.tone}`}
+                style={{ animationDelay: `${(i + 1) * 70}ms` }}
+              >
+                <span className="bento-card__index" aria-hidden="true">
+                  {service.index}
+                </span>
+                <div className="bento-card__body">
+                  <div className="bento-card__top">
+                    <div className="bento-card__icon">{service.icon}</div>
+                    <span className={`status-badge status-badge--${service.status}`}>Planned</span>
+                  </div>
+                  <h3 className="bento-card__title">{service.title}</h3>
+                  <p className="bento-card__description">{service.description}</p>
+                </div>
+              </article>
+            ),
+          )}
         </div>
       </main>
     </div>

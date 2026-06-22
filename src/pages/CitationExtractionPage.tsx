@@ -11,9 +11,20 @@ function makeId() {
 
 const DELAY_BETWEEN_DOWNLOADS_MS = 1200
 
+async function checkApiHealth(): Promise<boolean> {
+  try {
+    const response = await fetch('/api/health', { signal: AbortSignal.timeout(5000) })
+    const data = await response.json()
+    return Boolean(data.ok)
+  } catch {
+    return false
+  }
+}
+
 export function CitationExtractionPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const entriesRef = useRef<CitationEntry[]>([])
+  const lastTextRef = useRef('')
   const [fileName, setFileName] = useState<string | null>(null)
   const [entries, setEntries] = useState<CitationEntry[]>([])
   const [isResolving, setIsResolving] = useState(false)
@@ -26,57 +37,32 @@ export function CitationExtractionPage() {
   entriesRef.current = entries
 
   useEffect(() => {
-    fetch('/api/health')
-      .then((r) => r.json())
-      .then((d) => setApiOk(Boolean(d.ok)))
+    checkApiHealth()
+      .then(setApiOk)
       .catch(() => setApiOk(false))
   }, [])
 
   const readyCount = entries.filter((e) => e.status === 'ready').length
   const downloadedCount = entries.filter((e) => e.status === 'downloaded').length
+  const failedCount = entries.filter((e) => e.status === 'failed').length
   const totalCount = entries.length
 
-  const processText = useCallback(async (text: string, name: string) => {
-    const dois = extractDois(text)
-    if (dois.length === 0) {
-      setError('No DOIs found in this file. Expected lines with "doi: 10.xxxx/..."')
-      setEntries([])
-      setFileName(name)
-      return
-    }
-
-    setError('')
-    setFileName(name)
-
-    const initial: CitationEntry[] = dois.map((doi) => ({
-      id: makeId(),
-      doi,
-      snippet: snippetForDoi(text, doi),
-      status: 'resolving',
-      pdfUrl: '',
-      pdfSource: '…',
-    }))
-    setEntries(initial)
-    setResolveProgress({ done: 0, total: dois.length })
-
-    if (apiOk === false) {
-      setEntries(
-        initial.map((e) => ({
-          ...e,
-          status: 'failed',
-          pdfUrl: `https://doi.org/${e.doi}`,
-          pdfSource: '—',
-          error: 'API offline',
-        })),
-      )
-      setResolveProgress({ done: dois.length, total: dois.length })
-      return
-    }
-
+  const resolveEntries = useCallback(async (items: CitationEntry[]) => {
     setIsResolving(true)
+    setError('')
+    setResolveProgress({ done: 0, total: items.length })
+
+    setEntries((prev) =>
+      prev.map((entry) => {
+        const item = items.find((i) => i.id === entry.id)
+        if (!item) return entry
+        return { ...entry, status: 'resolving', pdfUrl: '', pdfSource: '…', error: undefined }
+      }),
+    )
+
     try {
       await resolvePdfUrlsParallel(
-        initial.map((e) => ({ id: e.id, doi: e.doi })),
+        items.map((e) => ({ id: e.id, doi: e.doi })),
         (id, result) => {
           setResolveProgress((p) => ({ ...p, done: p.done + 1 }))
           setEntries((prev) =>
@@ -107,7 +93,71 @@ export function CitationExtractionPage() {
     } finally {
       setIsResolving(false)
     }
-  }, [apiOk])
+  }, [])
+
+  const processText = useCallback(async (text: string, name: string) => {
+    lastTextRef.current = text
+    const dois = extractDois(text)
+    if (dois.length === 0) {
+      setError('No DOIs found in this file. Expected lines with "doi: 10.xxxx/..."')
+      setEntries([])
+      setFileName(name)
+      return
+    }
+
+    setError('')
+    setFileName(name)
+
+    const initial: CitationEntry[] = dois.map((doi) => ({
+      id: makeId(),
+      doi,
+      snippet: snippetForDoi(text, doi),
+      status: 'resolving',
+      pdfUrl: '',
+      pdfSource: '…',
+    }))
+    setEntries(initial)
+    setResolveProgress({ done: 0, total: dois.length })
+
+    const apiAvailable = await checkApiHealth()
+    setApiOk(apiAvailable)
+
+    if (!apiAvailable) {
+      setError(
+        'Cannot reach the API server. Open the app at the URL from your terminal (e.g. http://localhost:5175) and ensure npm run dev is running.',
+      )
+      setEntries(
+        initial.map((e) => ({
+          ...e,
+          status: 'failed',
+          pdfUrl: `https://doi.org/${e.doi}`,
+          pdfSource: '—',
+          error: 'API offline',
+        })),
+      )
+      setResolveProgress({ done: dois.length, total: dois.length })
+      return
+    }
+
+    await resolveEntries(initial)
+  }, [resolveEntries])
+
+  async function handleRetryResolve() {
+    if (entries.length === 0) return
+    const apiAvailable = await checkApiHealth()
+    setApiOk(apiAvailable)
+    if (!apiAvailable) {
+      setError('API still offline — run npm run dev and use the localhost URL it prints.')
+      return
+    }
+
+    const toResolve = entries.filter((e) => e.status === 'failed')
+    if (toResolve.length === 0) {
+      await resolveEntries(entries)
+      return
+    }
+    await resolveEntries(toResolve)
+  }
 
   function handleFile(file: File) {
     if (!file.name.match(/\.(txt|text|refs)$/i) && !file.type.startsWith('text/')) {
@@ -287,14 +337,25 @@ export function CitationExtractionPage() {
                   'Download All PDFs'
                 )}
               </button>
+              {failedCount > 0 && !isResolving && (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={handleRetryResolve}
+                  disabled={isDownloadingAll}
+                >
+                  Retry resolution
+                </button>
+              )}
             </div>
           )}
         </section>
 
         {apiOk === false && (
           <div className="citation-alert citation-alert--warn" role="alert">
-            API offline — downloads use direct PDF URLs. Run <code>npm run dev</code> for server-side
-            downloads.
+            API offline — the backend on port 3001 is not reachable from this page. Run{' '}
+            <code>npm run dev</code> and open the <strong>exact localhost URL</strong> Vite prints
+            (e.g. <code>http://localhost:5175</code>), not an older tab on another port.
           </div>
         )}
 
