@@ -8,6 +8,8 @@
 
 [functions."api"]
   timeout = 10
+  external_node_modules = ["express", "cors"]
+  included_files = ["server/**"]
 
 # API routes → Netlify Function (must be before SPA catch-all)
 [[redirects]]
