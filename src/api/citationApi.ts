@@ -42,8 +42,10 @@ export async function resolvePdfUrlsParallel(
   await Promise.all(Array.from({ length: workers }, () => worker()))
 }
 
-export function pdfDownloadUrl(doi: string): string {
-  return apiUrl(`/api/pdf?doi=${encodeURIComponent(doi)}`)
+export function pdfDownloadUrl(doi: string, pdfUrl?: string): string {
+  const params = new URLSearchParams({ doi })
+  if (pdfUrl) params.set('url', pdfUrl)
+  return apiUrl(`/api/pdf?${params}`)
 }
 
 export function canDownload(status: string, isResolving: boolean): boolean {

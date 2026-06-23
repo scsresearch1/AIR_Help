@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { canDownload, pdfDownloadUrl, resolvePdfUrlsParallel } from '../api/citationApi'
 import { apiOfflineHelp, checkApiHealth } from '../config/api'
-import { downloadPdfFromUrl, pdfFilenameForDoi, savePdfBlob } from '../lib/pdfDownload'
+import { downloadPdfFromUrl, isValidPdfBlob, pdfFilenameForDoi, savePdfBlob } from '../lib/pdfDownload'
 import { extractDois, snippetForDoi } from '../lib/doiParser'
 import type { CitationEntry } from '../lib/citationTypes'
 
@@ -174,19 +174,42 @@ export function CitationExtractionPage() {
 
     if (apiOk !== false) {
       try {
-        const response = await fetch(pdfDownloadUrl(entry.doi))
-        const contentType = response.headers.get('content-type') ?? ''
+        const response = await fetch(pdfDownloadUrl(entry.doi, entry.pdfUrl || undefined), {
+          redirect: 'manual',
+        })
 
-        if (response.ok && contentType.includes('pdf')) {
-          const blob = await response.blob()
-          const source = response.headers.get('X-Pdf-Source') ?? entry.pdfSource
-          savePdfBlob(blob, filename)
-          setEntries((prev) =>
-            prev.map((e) =>
-              e.id === entry.id ? { ...e, status: 'downloaded', pdfSource: source, error: undefined } : e,
-            ),
-          )
-          return true
+        if (response.status >= 300 && response.status < 400) {
+          const redirectUrl = response.headers.get('Location') ?? entry.pdfUrl
+          if (redirectUrl) {
+            await downloadPdfFromUrl(redirectUrl)
+            setEntries((prev) =>
+              prev.map((e) =>
+                e.id === entry.id
+                  ? { ...e, status: 'downloaded', error: undefined }
+                  : e,
+              ),
+            )
+            return true
+          }
+        }
+
+        if (response.ok) {
+          const contentType = response.headers.get('content-type') ?? ''
+          if (contentType.includes('pdf')) {
+            const blob = await response.blob()
+            if (await isValidPdfBlob(blob)) {
+              const source = response.headers.get('X-Pdf-Source') ?? entry.pdfSource
+              savePdfBlob(blob, filename)
+              setEntries((prev) =>
+                prev.map((e) =>
+                  e.id === entry.id
+                    ? { ...e, status: 'downloaded', pdfSource: source, error: undefined }
+                    : e,
+                ),
+              )
+              return true
+            }
+          }
         }
       } catch {
         // fall through to direct URL
@@ -207,7 +230,7 @@ export function CitationExtractionPage() {
 
     setEntries((prev) =>
       prev.map((e) =>
-        e.id === entry.id ? { ...e, status: 'ready', error: 'No PDF URL available' } : e,
+        e.id === entry.id ? { ...e, status: 'ready', error: 'Download failed — try the direct link' } : e,
       ),
     )
     return false

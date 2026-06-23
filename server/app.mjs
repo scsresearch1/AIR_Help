@@ -79,8 +79,10 @@ app.get('/api/pdf', async (req, res) => {
     return res.status(400).json({ error: 'Missing doi query parameter' })
   }
 
+  const knownUrl = typeof req.query.url === 'string' ? req.query.url : null
+
   try {
-    const result = await downloadPdfForDoi(doi)
+    const result = await downloadPdfForDoi(doi, knownUrl)
 
     if (result.found && result.buffer) {
       if (
@@ -105,6 +107,9 @@ app.get('/api/pdf', async (req, res) => {
     res.status(404).json({ error: result.error ?? 'PDF not found', doi: result.doi })
   } catch (error) {
     console.error('PDF download error:', error)
+    if (knownUrl) {
+      return res.redirect(302, knownUrl)
+    }
     res.status(500).json({ error: error instanceof Error ? error.message : 'PDF download failed' })
   }
 })

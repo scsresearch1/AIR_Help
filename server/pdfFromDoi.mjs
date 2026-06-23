@@ -12,6 +12,7 @@ const USER_AGENT =
 const LANDING_TIMEOUT_MS = 12_000
 const UNPAYWALL_TIMEOUT_MS = 8_000
 const STATIC_FAST_PATH_SCORE = 75
+const MIN_PDF_BYTES = 100
 
 export function cleanDoi(doi) {
   return doi
@@ -152,7 +153,14 @@ export async function resolveBestPdfUrl(rawDoi) {
 }
 
 function isPdfBuffer(buffer) {
-  return buffer.length > 4 && buffer.subarray(0, 4).toString() === '%PDF'
+  return buffer.length >= MIN_PDF_BYTES && buffer.subarray(0, 4).toString() === '%PDF'
+}
+
+/** OJS and similar publishers expect a view-page Referer on download URLs. */
+export function refererForPdfUrl(pdfUrl) {
+  const ojs = pdfUrl.match(/^(.*\/article\/)download\/(\d+)\/\d+/)
+  if (ojs) return `${ojs[1]}view/${ojs[2]}`
+  return pdfUrl
 }
 
 /** Fetch PDF bytes from a direct URL. */
@@ -164,28 +172,57 @@ export async function fetchPdfBytes(url, referer) {
       ...(referer ? { Referer: referer } : {}),
     },
     redirect: 'follow',
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(45_000),
   })
 
   if (!response.ok) return null
 
   const buffer = Buffer.from(await response.arrayBuffer())
-  const contentType = response.headers.get('content-type') ?? ''
 
-  if (isPdfBuffer(buffer) || contentType.includes('pdf')) {
-    return { buffer, url: response.url, contentType: contentType.includes('pdf') ? contentType : 'application/pdf' }
+  if (!isPdfBuffer(buffer)) return null
+
+  const contentType = response.headers.get('content-type') ?? ''
+  return {
+    buffer,
+    url: response.url,
+    contentType: contentType.includes('pdf') ? contentType : 'application/pdf',
   }
-  return null
 }
 
-export async function downloadPdfForDoi(rawDoi) {
+export async function downloadPdfFromUrl(pdfUrl) {
+  const referer = refererForPdfUrl(pdfUrl)
+  let result = await fetchPdfBytes(pdfUrl, referer)
+  if (!result) {
+    result = await fetchPdfBytes(pdfUrl, pdfUrl)
+  }
+  return result
+}
+
+export async function downloadPdfForDoi(rawDoi, knownPdfUrl = null) {
+  const directUrl = knownPdfUrl && isDirectPdfUrl(knownPdfUrl) ? knownPdfUrl : null
+
+  if (directUrl) {
+    const direct = await downloadPdfFromUrl(directUrl)
+    if (direct) {
+      return {
+        doi: cleanDoi(rawDoi),
+        found: true,
+        source: 'direct',
+        url: direct.url,
+        buffer: direct.buffer,
+        contentType: direct.contentType,
+        pdfUrl: directUrl,
+      }
+    }
+  }
+
   const resolved = await resolveBestPdfUrl(rawDoi)
 
   if (!resolved.pdfUrl) {
     return { doi: resolved.doi, found: false, error: 'No direct PDF URL found' }
   }
 
-  const result = await fetchPdfBytes(resolved.pdfUrl, resolved.pdfUrl)
+  const result = await downloadPdfFromUrl(resolved.pdfUrl)
   if (result) {
     return {
       doi: resolved.doi,
