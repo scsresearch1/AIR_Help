@@ -1881,6 +1881,15 @@ a.bento-card--link {
   color: var(--tone-amber);
 }
 
+.data-status--too-large {
+  background: rgba(255, 193, 7, 0.12);
+  color: #ffc857;
+}
+
+.data-table__row--too-large {
+  opacity: 0.85;
+}
+
 @keyframes card-enter {
   from {
     opacity: 0;

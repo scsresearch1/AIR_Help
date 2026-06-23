@@ -1,4 +1,14 @@
-/** Save any file blob to disk (no extra tabs). */
+/** Netlify serverless payload limit (~6 MB response → ~4.5 MB raw file). */
+export const NETLIFY_MAX_DOWNLOAD_BYTES = 4_500_000
+
+export function exceedsCloudDownloadLimit(
+  sizeBytes: number | null,
+  maxBytes: number | null,
+): boolean {
+  if (!maxBytes || !sizeBytes) return false
+  return sizeBytes > maxBytes
+}
+
 export function saveFileBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')

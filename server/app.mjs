@@ -2,13 +2,44 @@ import './env.mjs'
 import express from 'express'
 import cors from 'cors'
 import { downloadPdfForDoi, resolveBestPdfUrl } from './pdfFromDoi.mjs'
-import { downloadDatasetZip, isKaggleConfigured, searchDatasets } from './kaggle.mjs'
+import { downloadDatasetZip, getDatasetSizeBytes, isKaggleConfigured, searchDatasets } from './kaggle.mjs'
 
 const RESOLVE_CONCURRENCY = 6
-const NETLIFY_MAX_PDF_BYTES = 4_500_000
+export const NETLIFY_MAX_DOWNLOAD_BYTES = 4_500_000
+const NETLIFY_MAX_PDF_BYTES = NETLIFY_MAX_DOWNLOAD_BYTES
+
+function isNetlifyRuntime() {
+  return (
+    process.env.NETLIFY === 'true' ||
+    Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+    Boolean(process.env.NETLIFY_DEV)
+  )
+}
 
 function isZipBuffer(buffer) {
   return buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b
+}
+
+function formatBytes(bytes) {
+  const n = Number(bytes)
+  if (!Number.isFinite(n) || n <= 0) return 'unknown size'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = n
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
+}
+
+function tooLargePayload(ref, sizeBytes) {
+  const kaggleUrl = `https://www.kaggle.com/datasets/${ref}`
+  return {
+    error: `Dataset is ${formatBytes(sizeBytes)} — too large for cloud download (max ~4.5 MB on Netlify). Download on Kaggle instead.`,
+    ref,
+    url: kaggleUrl,
+  }
 }
 
 async function parallelMap(items, limit, fn) {
@@ -36,10 +67,7 @@ app.use(express.json({ limit: '2mb' }))
 export const PDF_RESOLVER_VERSION = '3'
 
 app.get('/api/health', (_req, res) => {
-  const isNetlify =
-    process.env.NETLIFY === 'true' ||
-    Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
-    Boolean(process.env.NETLIFY_DEV)
+  const isNetlify = isNetlifyRuntime()
   res.json({
     ok: true,
     pdfResolverVersion: PDF_RESOLVER_VERSION,
@@ -47,6 +75,7 @@ app.get('/api/health', (_req, res) => {
     unpaywall: Boolean(process.env.UNPAYWALL_EMAIL),
     kaggle: isKaggleConfigured(),
     runtime: isNetlify ? 'netlify' : 'node',
+    maxDownloadBytes: isNetlify ? NETLIFY_MAX_DOWNLOAD_BYTES : null,
   })
 })
 
@@ -175,6 +204,16 @@ app.get('/api/kaggle/download', async (req, res) => {
   }
 
   try {
+    if (isNetlifyRuntime()) {
+      const sizeHint = Number(req.query.sizeBytes)
+      let sizeBytes =
+        Number.isFinite(sizeHint) && sizeHint > 0 ? sizeHint : await getDatasetSizeBytes(ref)
+
+      if (sizeBytes && sizeBytes > NETLIFY_MAX_DOWNLOAD_BYTES) {
+        return res.status(413).json(tooLargePayload(ref, sizeBytes))
+      }
+    }
+
     const result = await downloadDatasetZip(ref)
 
     const safeName = result.filename.replace(/[^\w.-]/g, '_')
@@ -187,12 +226,8 @@ app.get('/api/kaggle/download', async (req, res) => {
       })
     }
 
-    if (process.env.NETLIFY === 'true' && result.buffer.length > NETLIFY_MAX_PDF_BYTES) {
-      return res.status(413).json({
-        error: 'Dataset too large for serverless download. Open the dataset on Kaggle and download manually.',
-        ref: result.ref,
-        url: `https://www.kaggle.com/datasets/${result.ref}`,
-      })
+    if (isNetlifyRuntime() && result.buffer.length > NETLIFY_MAX_DOWNLOAD_BYTES) {
+      return res.status(413).json(tooLargePayload(ref, result.buffer.length))
     }
 
     // Netlify Functions mangle raw binary as UTF-8; base64 JSON survives intact.

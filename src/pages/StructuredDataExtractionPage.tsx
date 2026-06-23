@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { downloadKaggleDataset, searchKaggleDatasets } from '../api/kaggleApi'
 import { apiUrl } from '../config/api'
-import { saveFileBlob, zipFilenameForRef } from '../lib/datasetDownload'
+import { saveFileBlob, zipFilenameForRef, exceedsCloudDownloadLimit } from '../lib/datasetDownload'
 import type { DatasetEntry } from '../lib/dataExtractionTypes'
 
 function makeId() {
@@ -21,6 +21,7 @@ export function StructuredDataExtractionPage() {
   const [lastQuery, setLastQuery] = useState('')
   const [apiOk, setApiOk] = useState<boolean | null>(null)
   const [kaggleOk, setKaggleOk] = useState<boolean | null>(null)
+  const [maxDownloadBytes, setMaxDownloadBytes] = useState<number | null>(null)
   const [downloadProgress, setDownloadProgress] = useState({ done: 0, total: 0 })
 
   entriesRef.current = entries
@@ -31,6 +32,9 @@ export function StructuredDataExtractionPage() {
       .then((d) => {
         setApiOk(Boolean(d.ok))
         setKaggleOk(Boolean(d.kaggle))
+        setMaxDownloadBytes(
+          typeof d.maxDownloadBytes === 'number' ? d.maxDownloadBytes : null,
+        )
       })
       .catch(() => {
         setApiOk(false)
@@ -38,10 +42,20 @@ export function StructuredDataExtractionPage() {
       })
   }, [])
 
-  const selectedCount = entries.filter((e) => e.selected && e.status !== 'downloaded').length
+  const selectedCount = entries.filter(
+    (e) => e.selected && e.status !== 'downloaded' && !isTooLarge(e),
+  ).length
   const downloadedCount = entries.filter((e) => e.status === 'downloaded').length
+  const tooLargeCount = entries.filter((e) => isTooLarge(e)).length
   const allSelected =
-    entries.length > 0 && entries.every((e) => e.selected || e.status === 'downloaded')
+    entries.length > 0 &&
+    entries
+      .filter((e) => e.status !== 'downloaded' && !isTooLarge(e))
+      .every((e) => e.selected)
+
+  function isTooLarge(entry: DatasetEntry): boolean {
+    return import.meta.env.PROD && exceedsCloudDownloadLimit(entry.sizeBytes, maxDownloadBytes)
+  }
 
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault()
@@ -80,7 +94,7 @@ export function StructuredDataExtractionPage() {
   function toggleSelect(id: string) {
     setEntries((prev) =>
       prev.map((entry) =>
-        entry.id === id && entry.status !== 'downloaded'
+        entry.id === id && entry.status !== 'downloaded' && !isTooLarge(entry)
           ? { ...entry, selected: !entry.selected }
           : entry,
       ),
@@ -91,12 +105,30 @@ export function StructuredDataExtractionPage() {
     const selectAll = !allSelected
     setEntries((prev) =>
       prev.map((entry) =>
-        entry.status === 'downloaded' ? entry : { ...entry, selected: selectAll },
+        entry.status === 'downloaded' || isTooLarge(entry)
+          ? { ...entry, selected: false }
+          : { ...entry, selected: selectAll },
       ),
     )
   }
 
   async function downloadOne(entry: DatasetEntry): Promise<boolean> {
+    if (isTooLarge(entry)) {
+      setEntries((prev) =>
+        prev.map((e) =>
+          e.id === entry.id
+            ? {
+                ...e,
+                status: 'failed',
+                selected: false,
+                error: `Dataset is ${entry.sizeLabel} — too large for cloud download. Use the Kaggle link above.`,
+              }
+            : e,
+        ),
+      )
+      return false
+    }
+
     setEntries((prev) =>
       prev.map((e) =>
         e.id === entry.id ? { ...e, status: 'downloading', error: undefined, selected: true } : e,
@@ -104,7 +136,7 @@ export function StructuredDataExtractionPage() {
     )
 
     try {
-      const blob = await downloadKaggleDataset(entry.ref)
+      const blob = await downloadKaggleDataset(entry.ref, entry.sizeBytes)
       saveFileBlob(blob, zipFilenameForRef(entry.ref))
       setEntries((prev) =>
         prev.map((e) =>
@@ -126,7 +158,9 @@ export function StructuredDataExtractionPage() {
   }
 
   async function handleDownloadSelected() {
-    const toDownload = entriesRef.current.filter((e) => e.selected && e.status !== 'downloaded')
+    const toDownload = entriesRef.current.filter(
+      (e) => e.selected && e.status !== 'downloaded' && !isTooLarge(e),
+    )
     if (toDownload.length === 0) return
 
     setIsDownloading(true)
@@ -190,7 +224,9 @@ export function StructuredDataExtractionPage() {
               </button>
             </div>
             <p className="data-search__hint">
-              Enter any research topic — we search Kaggle and list matching public datasets.
+              Enter any research topic — we search Kaggle and list matching public datasets. On the
+              live site, only datasets under ~4.5 MB can be downloaded here; larger ones must be
+              fetched from Kaggle directly.
             </p>
           </form>
 
@@ -216,6 +252,12 @@ export function StructuredDataExtractionPage() {
                       <>
                         {' '}
                         · <strong>{selectedCount}</strong> selected
+                      </>
+                    )}
+                    {tooLargeCount > 0 && (
+                      <>
+                        {' '}
+                        · <strong>{tooLargeCount}</strong> too large for cloud download
                       </>
                     )}
                   </>
@@ -302,12 +344,14 @@ export function StructuredDataExtractionPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {entries.map((entry, index) => (
+                  {entries.map((entry, index) => {
+                    const tooLarge = isTooLarge(entry)
+                    return (
                     <tr
                       key={entry.id}
                       className={`data-table__row data-table__row--${entry.status} ${
                         entry.selected ? 'data-table__row--selected' : ''
-                      }`}
+                      } ${tooLarge ? 'data-table__row--too-large' : ''}`}
                     >
                       <td className="data-table__check">
                         <input
@@ -315,7 +359,7 @@ export function StructuredDataExtractionPage() {
                           aria-label={`Select ${entry.title}`}
                           checked={entry.selected}
                           onChange={() => toggleSelect(entry.id)}
-                          disabled={entry.status === 'downloaded' || isDownloading}
+                          disabled={entry.status === 'downloaded' || isDownloading || tooLarge}
                         />
                       </td>
                       <td className="data-table__num">{index + 1}</td>
@@ -338,10 +382,15 @@ export function StructuredDataExtractionPage() {
                       <td className="data-table__size">{entry.sizeLabel}</td>
                       <td className="data-table__updated">{entry.lastUpdated}</td>
                       <td>
-                        <DatasetStatusBadge status={entry.status} />
+                        {tooLarge ? (
+                          <span className="data-status data-status--too-large">Use Kaggle</span>
+                        ) : (
+                          <DatasetStatusBadge status={entry.status} />
+                        )}
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

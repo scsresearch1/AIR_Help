@@ -129,16 +129,34 @@ export async function searchDatasets(query, { maxPages = MAX_SEARCH_PAGES } = {}
   return all
 }
 
-/** Download full dataset archive as a zip buffer. */
-export async function downloadDatasetZip(ref) {
+function parseRef(ref) {
   const cleanRef = ref.trim().replace(/^\/+/, '')
   const parts = cleanRef.split('/').filter(Boolean)
   if (parts.length < 2) {
     throw new Error('Dataset ref must be in owner/slug format')
   }
+  return { ownerSlug: parts[0], datasetSlug: parts[1], cleanRef }
+}
 
-  const ownerSlug = parts[0]
-  const datasetSlug = parts[1]
+/** Best-effort size lookup before downloading (falls back to search metadata). */
+export async function getDatasetSizeBytes(ref) {
+  const { ownerSlug, datasetSlug } = parseRef(ref)
+
+  try {
+    const response = await kaggleFetch(`/datasets/view/${ownerSlug}/${datasetSlug}`)
+    const data = await response.json()
+    const size = Number(pick(data, 'totalBytes', 'total_bytes', 'size'))
+    if (Number.isFinite(size) && size > 0) return size
+  } catch {
+    // optional — list/search metadata may still be used
+  }
+
+  return null
+}
+
+/** Download full dataset archive as a zip buffer. */
+export async function downloadDatasetZip(ref) {
+  const { ownerSlug, datasetSlug, cleanRef } = parseRef(ref)
 
   const response = await fetch(`${KAGGLE_BASE}/datasets/download/${ownerSlug}/${datasetSlug}`, {
     headers: { Authorization: authHeader() },
