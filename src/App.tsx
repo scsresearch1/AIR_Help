@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage'
 import { LandingPage } from './pages/LandingPage'
 import { CitationExtractionPage } from './pages/CitationExtractionPage'
 import { StructuredDataExtractionPage } from './pages/StructuredDataExtractionPage'
+import { ReferenceManagerPage } from './pages/ReferenceManagerPage'
 
 export default function App() {
   return (
@@ -40,6 +41,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <StructuredDataExtractionPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reference-manager"
+            element={
+              <ProtectedRoute>
+                <ReferenceManagerPage />
               </ProtectedRoute>
             }
           />

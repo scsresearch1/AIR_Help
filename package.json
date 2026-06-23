@@ -12,6 +12,11 @@
     "start": "node server/index.mjs"
   },
   "dependencies": {
+    "@citation-js/core": "^0.7.21",
+    "@citation-js/plugin-bibtex": "^0.7.21",
+    "@citation-js/plugin-csl": "^0.7.22",
+    "@citation-js/plugin-doi": "^0.7.21",
+    "@citation-js/plugin-ris": "^0.7.21",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "react": "^19.1.0",
