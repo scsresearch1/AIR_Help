@@ -255,12 +255,20 @@ export function StructuredDataExtractionPage() {
 
         {apiOk === true && kaggleOk === false && (
           <div className="data-alert data-alert--warn" role="alert">
-            Kaggle credentials missing — add <code>KAGGLE_USERNAME</code> and <code>KAGGLE_KEY</code>{' '}
-            to <code>.env</code> (from{' '}
+            Kaggle credentials missing — create a token at{' '}
             <a href="https://www.kaggle.com/settings" target="_blank" rel="noopener noreferrer">
               kaggle.com/settings
-            </a>
-            ) and restart the API.
+            </a>{' '}
+            (Legacy API Credentials), then add <code>KAGGLE_USERNAME</code> and <code>KAGGLE_KEY</code>{' '}
+            {import.meta.env.PROD ? (
+              <>
+                in Netlify → Site settings → Environment variables, and redeploy.
+              </>
+            ) : (
+              <>
+                to <code>.env</code> and restart the API (<code>npm run dev</code>).
+              </>
+            )}
           </div>
         )}
 
