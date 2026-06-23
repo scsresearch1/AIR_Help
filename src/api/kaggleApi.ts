@@ -1,8 +1,10 @@
 import { apiUrl } from '../config/api'
+import { base64ToBlob, isValidZipBlob } from '../lib/datasetDownload'
 import type { KaggleSearchResponse } from '../lib/dataExtractionTypes'
 
 export function kaggleDownloadUrl(ref: string): string {
-  return apiUrl(`/api/kaggle/download?ref=${encodeURIComponent(ref)}`)
+  const params = new URLSearchParams({ ref, format: 'base64' })
+  return apiUrl(`/api/kaggle/download?${params}`)
 }
 
 export async function searchKaggleDatasets(query: string): Promise<KaggleSearchResponse> {
@@ -23,10 +25,41 @@ export async function downloadKaggleDataset(ref: string): Promise<Blob> {
     signal: AbortSignal.timeout(300_000),
   })
 
-  if (!response.ok) {
-    const data = (await response.json().catch(() => ({}))) as { error?: string }
+  const contentType = response.headers.get('content-type') ?? ''
+
+  if (contentType.includes('json')) {
+    const data = (await response.json()) as {
+      ok?: boolean
+      data?: string
+      filename?: string
+      contentType?: string
+      error?: string
+      url?: string
+    }
+
+    if (!response.ok || data.error) {
+      const hint = data.url ? ` Open on Kaggle: ${data.url}` : ''
+      throw new Error((data.error ?? `Download failed (${response.status})`) + hint)
+    }
+
+    if (data.ok && data.data) {
+      const blob = base64ToBlob(data.data, data.contentType ?? 'application/zip')
+      if (!(await isValidZipBlob(blob))) {
+        throw new Error('Downloaded file is not a valid ZIP archive — try again or download from Kaggle.')
+      }
+      return blob
+    }
+
     throw new Error(data.error ?? `Download failed (${response.status})`)
   }
 
-  return response.blob()
+  if (!response.ok) {
+    throw new Error(`Download failed (${response.status})`)
+  }
+
+  const blob = await response.blob()
+  if (!(await isValidZipBlob(blob))) {
+    throw new Error('Downloaded file is not a valid ZIP archive — try again or download from Kaggle.')
+  }
+  return blob
 }

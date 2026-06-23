@@ -7,6 +7,10 @@ import { downloadDatasetZip, isKaggleConfigured, searchDatasets } from './kaggle
 const RESOLVE_CONCURRENCY = 6
 const NETLIFY_MAX_PDF_BYTES = 4_500_000
 
+function isZipBuffer(buffer) {
+  return buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b
+}
+
 async function parallelMap(items, limit, fn) {
   const results = new Array(items.length)
   let next = 0
@@ -173,6 +177,16 @@ app.get('/api/kaggle/download', async (req, res) => {
   try {
     const result = await downloadDatasetZip(ref)
 
+    const safeName = result.filename.replace(/[^\w.-]/g, '_')
+
+    if (!isZipBuffer(result.buffer)) {
+      return res.status(502).json({
+        error: 'Kaggle returned an invalid archive. Try downloading from Kaggle directly.',
+        ref: result.ref,
+        url: `https://www.kaggle.com/datasets/${result.ref}`,
+      })
+    }
+
     if (process.env.NETLIFY === 'true' && result.buffer.length > NETLIFY_MAX_PDF_BYTES) {
       return res.status(413).json({
         error: 'Dataset too large for serverless download. Open the dataset on Kaggle and download manually.',
@@ -181,11 +195,21 @@ app.get('/api/kaggle/download', async (req, res) => {
       })
     }
 
-    const safeName = result.filename.replace(/[^\w.-]/g, '_')
+    // Netlify Functions mangle raw binary as UTF-8; base64 JSON survives intact.
+    if (req.query.format === 'base64') {
+      return res.json({
+        ok: true,
+        filename: safeName,
+        contentType: result.contentType,
+        ref: result.ref,
+        data: result.buffer.toString('base64'),
+      })
+    }
+
     res.setHeader('Content-Type', result.contentType)
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`)
     res.setHeader('X-Dataset-Ref', result.ref)
-    return res.send(result.buffer)
+    return res.end(result.buffer)
   } catch (error) {
     console.error('Kaggle download error:', error)
     res.status(500).json({ error: error instanceof Error ? error.message : 'Kaggle download failed' })
