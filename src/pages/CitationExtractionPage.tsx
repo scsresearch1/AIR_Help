@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { canDownload, pdfDownloadUrl, resolvePdfUrlsParallel } from '../api/citationApi'
+import { canDownload, resolvePdfUrlsParallel } from '../api/citationApi'
 import { apiOfflineHelp, checkApiHealth } from '../config/api'
+import { downloadAllAsZip, fetchPdfBlob, zipFilenameFromRefs } from '../lib/citationZipDownload'
 import { downloadPdfFromUrl, pdfFilenameForDoi, savePdfBlob } from '../lib/pdfDownload'
 import { extractDois, snippetForDoi } from '../lib/doiParser'
 import type { CitationEntry } from '../lib/citationTypes'
@@ -9,8 +10,6 @@ import type { CitationEntry } from '../lib/citationTypes'
 function makeId() {
   return crypto.randomUUID()
 }
-
-const DELAY_BETWEEN_DOWNLOADS_MS = 1200
 
 export function CitationExtractionPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -171,26 +170,16 @@ export function CitationExtractionPage() {
     )
 
     const filename = pdfFilenameForDoi(entry.doi)
+    const blob = await fetchPdfBlob(entry)
 
-    if (apiOk !== false) {
-      try {
-        const response = await fetch(pdfDownloadUrl(entry.doi))
-        const contentType = response.headers.get('content-type') ?? ''
-
-        if (response.ok && contentType.includes('pdf')) {
-          const blob = await response.blob()
-          const source = response.headers.get('X-Pdf-Source') ?? entry.pdfSource
-          savePdfBlob(blob, filename)
-          setEntries((prev) =>
-            prev.map((e) =>
-              e.id === entry.id ? { ...e, status: 'downloaded', pdfSource: source, error: undefined } : e,
-            ),
-          )
-          return true
-        }
-      } catch {
-        // fall through to direct URL
-      }
+    if (blob) {
+      savePdfBlob(blob, filename)
+      setEntries((prev) =>
+        prev.map((e) =>
+          e.id === entry.id ? { ...e, status: 'downloaded', error: undefined } : e,
+        ),
+      )
+      return true
     }
 
     if (entry.pdfUrl) {
@@ -227,18 +216,44 @@ export function CitationExtractionPage() {
     setError('')
     setDownloadAllProgress({ done: 0, total: readyEntries.length })
 
-    for (let i = 0; i < readyEntries.length; i++) {
-      const current = entriesRef.current.find((e) => e.id === readyEntries[i].id) ?? readyEntries[i]
-      await downloadOne(current)
-      setDownloadAllProgress({ done: i + 1, total: readyEntries.length })
+    const readyIds = new Set(readyEntries.map((e) => e.id))
+    setEntries((prev) =>
+      prev.map((e) =>
+        readyIds.has(e.id) ? { ...e, status: 'downloading', error: undefined } : e,
+      ),
+    )
 
-      if (i < readyEntries.length - 1) {
-        await new Promise((r) => setTimeout(r, DELAY_BETWEEN_DOWNLOADS_MS))
+    try {
+      const result = await downloadAllAsZip(
+        readyEntries,
+        zipFilenameFromRefs(fileName),
+        (done, total) => setDownloadAllProgress({ done, total }),
+      )
+
+      setEntries((prev) =>
+        prev.map((e) => {
+          if (!readyIds.has(e.id)) return e
+          if (result.skipped.includes(e.doi)) {
+            return { ...e, status: 'ready', error: 'Could not include in zip' }
+          }
+          return { ...e, status: 'downloaded', error: undefined }
+        }),
+      )
+
+      if (result.skipped.length > 0) {
+        setError(
+          `ZIP saved with ${result.included} PDFs. ${result.skipped.length} could not be fetched — see _skipped.txt in the archive.`,
+        )
       }
+    } catch (err) {
+      setEntries((prev) =>
+        prev.map((e) => (readyIds.has(e.id) ? { ...e, status: 'ready' } : e)),
+      )
+      setError(err instanceof Error ? err.message : 'Could not build zip archive')
+    } finally {
+      setIsDownloadingAll(false)
+      setDownloadAllProgress({ done: 0, total: 0 })
     }
-
-    setIsDownloadingAll(false)
-    setDownloadAllProgress({ done: 0, total: 0 })
   }
 
   return (
@@ -296,7 +311,7 @@ export function CitationExtractionPage() {
                   </>
                 ) : isDownloadingAll ? (
                   <>
-                    Downloading <strong>{downloadAllProgress.done}</strong> /{' '}
+                    Building ZIP <strong>{downloadAllProgress.done}</strong> /{' '}
                     <strong>{downloadAllProgress.total}</strong>…
                   </>
                 ) : (
@@ -320,10 +335,10 @@ export function CitationExtractionPage() {
                 {isDownloadingAll ? (
                   <>
                     <span className="btn__spinner" aria-hidden="true" />
-                    Downloading all…
+                    Building ZIP…
                   </>
                 ) : (
-                  'Download All PDFs'
+                  'Download All PDFs (ZIP)'
                 )}
               </button>
               {failedCount > 0 && !isResolving && (
