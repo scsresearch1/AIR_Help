@@ -5,6 +5,7 @@ import { apiOfflineHelp, checkApiHealth } from '../config/api'
 import {
   base64ToPdfBlob,
   downloadPdfFromUrl,
+  isInvalidScienceDirectPdfUrl,
   isValidPdfBlob,
   pdfFilenameForDoi,
   savePdfBlob,
@@ -244,7 +245,7 @@ export function CitationExtractionPage() {
       }
     }
 
-    if (entry.pdfUrl) {
+    if (entry.pdfUrl && !isInvalidScienceDirectPdfUrl(entry.pdfUrl)) {
       await downloadPdfFromUrl(entry.pdfUrl)
       setEntries((prev) =>
         prev.map((e) =>

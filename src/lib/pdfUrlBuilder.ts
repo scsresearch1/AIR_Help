@@ -31,14 +31,7 @@ export function buildPdfUrlsForDoi(rawDoi: string): PdfCandidate[] {
     })
   }
 
-  // Elsevier
-  if (doi.startsWith('10.1016/')) {
-    const pii = doi.split('/')[1]
-    candidates.push({
-      url: `https://www.sciencedirect.com/science/article/pii/${pii}/pdfft?isDTMRedir=true&download=true`,
-      source: 'ScienceDirect',
-    })
-  }
+  // Elsevier / ScienceDirect — resolve PII via doi.org redirect (see server/pdfFromDoi.mjs).
 
   // Wiley / IET
   if (

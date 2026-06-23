@@ -2,15 +2,23 @@ import './env.mjs'
 import {
   extractPdfUrlsFromHtml,
   isDirectPdfUrl,
+  isInvalidScienceDirectPdfUrl,
   pickBestPdfCandidate,
+  scienceDirectPdfCandidates,
   scorePdfCandidate,
 } from './htmlPdfExtract.mjs'
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
+function resolveUserAgent() {
+  const email = process.env.UNPAYWALL_EMAIL ?? 'research@example.com'
+  return `ResearchHelper/1.0 (mailto:${email})`
+}
+
 const LANDING_TIMEOUT_MS = 12_000
 const UNPAYWALL_TIMEOUT_MS = 8_000
+const CROSSREF_TIMEOUT_MS = 8_000
 const STATIC_FAST_PATH_SCORE = 75
 const MIN_PDF_BYTES = 100
 
@@ -39,13 +47,7 @@ function buildStaticCandidates(doi) {
       source: 'Nature',
     })
   }
-  if (doi.startsWith('10.1016/')) {
-    const pii = doi.split('/')[1]
-    candidates.push({
-      url: `https://www.sciencedirect.com/science/article/pii/${pii}/pdfft?isDTMRedir=true&download=true`,
-      source: 'ScienceDirect',
-    })
-  }
+  // Elsevier / ScienceDirect: PII comes from doi.org redirect, not the DOI suffix.
   if (doi.startsWith('10.1002/') || doi.startsWith('10.1111/') || doi.startsWith('10.1049/')) {
     candidates.push({
       url: `https://onlinelibrary.wiley.com/doi/pdfdirect/${doi}`,
@@ -67,12 +69,38 @@ function buildStaticCandidates(doi) {
 
 async function fetchLandingPage(doi) {
   const response = await fetch(`https://doi.org/${encodeURIComponent(doi)}`, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
+    headers: { 'User-Agent': resolveUserAgent(), Accept: 'text/html' },
     redirect: 'follow',
     signal: AbortSignal.timeout(LANDING_TIMEOUT_MS),
   })
   const html = await response.text()
   return { url: response.url, html }
+}
+
+/** CrossRef metadata includes Elsevier PII when doi.org redirect is blocked. */
+async function fetchCrossrefElsevierCandidates(doi) {
+  if (!doi.startsWith('10.1016/')) return []
+
+  try {
+    const response = await fetch(`https://api.crossref.org/works/${encodeURIComponent(doi)}`, {
+      headers: { 'User-Agent': resolveUserAgent(), Accept: 'application/json' },
+      signal: AbortSignal.timeout(CROSSREF_TIMEOUT_MS),
+    })
+    if (!response.ok) return []
+
+    const data = await response.json()
+    for (const link of data.message?.link ?? []) {
+      const piiMatch = link.URL?.match(/PII:([A-Z0-9]+)/i)
+      if (piiMatch) {
+        return scienceDirectPdfCandidates(
+          `https://linkinghub.elsevier.com/retrieve/pii/${piiMatch[1]}`,
+        )
+      }
+    }
+  } catch {
+    // optional
+  }
+  return []
 }
 
 async function fetchUnpaywall(doi) {
@@ -83,7 +111,7 @@ async function fetchUnpaywall(doi) {
     const response = await fetch(
       `https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`,
       {
-        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+        headers: { 'User-Agent': resolveUserAgent(), Accept: 'application/json' },
         signal: AbortSignal.timeout(UNPAYWALL_TIMEOUT_MS),
       },
     )
@@ -114,14 +142,16 @@ export async function resolveBestPdfUrl(rawDoi) {
     }
   }
 
-  const [landingSettled, unpaywallSettled] = await Promise.allSettled([
+  const [landingSettled, unpaywallSettled, crossrefSettled] = await Promise.allSettled([
     fetchLandingPage(doi),
     fetchUnpaywall(doi),
+    fetchCrossrefElsevierCandidates(doi),
   ])
 
   if (landingSettled.status === 'fulfilled') {
     const { url: landingUrl, html } = landingSettled.value
     candidates.push(...extractPdfUrlsFromHtml(html, landingUrl))
+    candidates.push(...scienceDirectPdfCandidates(landingUrl))
 
     if (landingUrl.includes('mdpi.com') && !landingUrl.includes('/pdf')) {
       const articleUrl = landingUrl.replace(/\/pdf.*$/, '').replace(/\/$/, '')
@@ -136,9 +166,14 @@ export async function resolveBestPdfUrl(rawDoi) {
     candidates.push(...unpaywallSettled.value)
   }
 
+  if (crossrefSettled.status === 'fulfilled') {
+    candidates.push(...crossrefSettled.value)
+  }
+
   const seen = new Set()
   const unique = candidates.filter((c) => {
     if (!c?.url || seen.has(c.url)) return false
+    if (isInvalidScienceDirectPdfUrl(c.url)) return false
     seen.add(c.url)
     return isDirectPdfUrl(c.url)
   })
@@ -158,6 +193,11 @@ function isPdfBuffer(buffer) {
 
 /** OJS and similar publishers expect a view-page Referer on download URLs. */
 export function refererForPdfUrl(pdfUrl) {
+  const sd = pdfUrl.match(/sciencedirect\.com\/science\/article\/pii\/([^/?#]+)/i)
+  if (sd) {
+    return `https://www.sciencedirect.com/science/article/pii/${sd[1]}`
+  }
+
   const ojs = pdfUrl.match(/^(.*\/article\/)download\/(\d+)\/\d+/)
   if (ojs) return `${ojs[1]}view/${ojs[2]}`
   return pdfUrl
@@ -199,7 +239,10 @@ export async function downloadPdfFromUrl(pdfUrl) {
 }
 
 export async function downloadPdfForDoi(rawDoi, knownPdfUrl = null) {
-  const directUrl = knownPdfUrl && isDirectPdfUrl(knownPdfUrl) ? knownPdfUrl : null
+  let directUrl =
+    knownPdfUrl && isDirectPdfUrl(knownPdfUrl) && !isInvalidScienceDirectPdfUrl(knownPdfUrl)
+      ? knownPdfUrl
+      : null
 
   if (directUrl) {
     const direct = await downloadPdfFromUrl(directUrl)
@@ -238,10 +281,16 @@ export async function downloadPdfForDoi(rawDoi, knownPdfUrl = null) {
   return {
     doi: resolved.doi,
     found: false,
-    redirectUrl: resolved.pdfUrl,
+    redirectUrl: scienceDirectArticleUrl(resolved.pdfUrl) ?? resolved.pdfUrl,
     redirectSource: resolved.pdfSource,
     error: 'Could not fetch PDF bytes — use direct URL',
   }
+}
+
+function scienceDirectArticleUrl(pdfUrl) {
+  const match = pdfUrl.match(/sciencedirect\.com\/science\/article\/pii\/([^/?#]+)/i)
+  if (!match) return null
+  return `https://www.sciencedirect.com/science/article/pii/${match[1]}`
 }
 
 // Legacy exports for compatibility

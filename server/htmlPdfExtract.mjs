@@ -26,6 +26,36 @@ function isDirectPdfUrl(url) {
   )
 }
 
+/** Extract Elsevier PII from linkinghub / ScienceDirect landing URLs. */
+export function extractScienceDirectPii(landingUrl) {
+  const match = landingUrl.match(/\/pii\/([A-Z0-9]+)/i)
+  return match?.[1] ?? null
+}
+
+export function isValidScienceDirectPii(pii) {
+  return /^S[0-9A-Z]+$/i.test(pii)
+}
+
+export function isInvalidScienceDirectPdfUrl(url) {
+  const match = url.match(/sciencedirect\.com\/science\/article\/pii\/([^/?#]+)/i)
+  if (!match) return false
+  return !isValidScienceDirectPii(match[1])
+}
+
+export function scienceDirectPdfCandidates(landingUrl) {
+  if (!/elsevier\.com|sciencedirect\.com/i.test(landingUrl)) return []
+  const pii = extractScienceDirectPii(landingUrl)
+  if (!pii) return []
+
+  const article = `https://www.sciencedirect.com/science/article/pii/${pii}`
+  return [
+    {
+      url: `${article}/pdfft?isDTMRedir=true&download=true`,
+      source: 'ScienceDirect',
+    },
+  ]
+}
+
 export function extractPdfUrlsFromHtml(html, baseUrl) {
   const found = []
 
@@ -80,6 +110,7 @@ export function scorePdfCandidate(candidate) {
   if (url.includes('/pdfdirect/')) score += 70
   if (url.endsWith('.pdf')) score += 60
   if (url.includes('/pdfft')) score += 55
+  if (candidate.source === 'ScienceDirect') score += 85
   if (url.endsWith('/pdf')) score += 50
   if (candidate.source === 'Unpaywall') score += 45
   if (url.includes('doi.org')) score -= 20

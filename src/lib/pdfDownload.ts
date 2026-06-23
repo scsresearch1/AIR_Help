@@ -26,7 +26,12 @@ export function downloadPdfFromUrl(url: string): Promise<void> {
   })
 }
 
-export function pdfFilenameForDoi(doi: string): string {
+export function isInvalidScienceDirectPdfUrl(url: string): boolean {
+  const match = url.match(/sciencedirect\.com\/science\/article\/pii\/([^/?#]+)/i)
+  if (!match) return false
+  return !/^S[0-9A-Z]+$/i.test(match[1])
+}
+
   return `${doi.replace(/\//g, '_')}.pdf`
 }
 
