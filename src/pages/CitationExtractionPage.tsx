@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { canDownload, pdfDownloadUrl, resolvePdfUrlsParallel } from '../api/citationApi'
+import { canDownload, pdfDownloadUrl, resolvePdfUrl, resolvePdfUrlsParallel } from '../api/citationApi'
 import { apiOfflineHelp, checkApiHealth } from '../config/api'
 import {
   base64ToPdfBlob,
+  browserPdfUrl,
   downloadPdfFromUrl,
   isInvalidScienceDirectPdfUrl,
   isValidPdfBlob,
@@ -177,22 +178,43 @@ export function CitationExtractionPage() {
       prev.map((e) => (e.id === entry.id ? { ...e, status: 'downloading', error: undefined } : e)),
     )
 
-    const filename = pdfFilenameForDoi(entry.doi)
+    let working = entry
+    if (entry.doi.startsWith('10.1016/')) {
+      try {
+        const fresh = await resolvePdfUrl(entry.doi)
+        if (fresh.pdfUrl) {
+          working = {
+            ...entry,
+            pdfUrl: fresh.pdfUrl,
+            pdfSource: fresh.pdfSource ?? entry.pdfSource,
+          }
+        }
+      } catch {
+        // keep entry
+      }
+    }
+
+    const filename = pdfFilenameForDoi(working.doi)
 
     if (apiOk !== false) {
       try {
-        const response = await fetch(pdfDownloadUrl(entry.doi, entry.pdfUrl || undefined), {
+        const response = await fetch(pdfDownloadUrl(working.doi, working.pdfUrl || undefined), {
           redirect: 'manual',
         })
 
         if (response.status >= 300 && response.status < 400) {
-          const redirectUrl = response.headers.get('Location') ?? entry.pdfUrl
+          const redirectUrl = response.headers.get('Location') ?? working.pdfUrl
           if (redirectUrl) {
-            await downloadPdfFromUrl(redirectUrl)
+            await downloadPdfFromUrl(browserPdfUrl(redirectUrl))
             setEntries((prev) =>
               prev.map((e) =>
                 e.id === entry.id
-                  ? { ...e, status: 'downloaded', error: undefined }
+                  ? {
+                      ...e,
+                      ...working,
+                      status: 'ready',
+                      error: 'Opened article in browser — save the PDF from the publisher page',
+                    }
                   : e,
               ),
             )
@@ -245,12 +267,17 @@ export function CitationExtractionPage() {
       }
     }
 
-    if (entry.pdfUrl && !isInvalidScienceDirectPdfUrl(entry.pdfUrl)) {
-      await downloadPdfFromUrl(entry.pdfUrl)
+    if (working.pdfUrl && !isInvalidScienceDirectPdfUrl(working.pdfUrl)) {
+      await downloadPdfFromUrl(browserPdfUrl(working.pdfUrl))
       setEntries((prev) =>
         prev.map((e) =>
           e.id === entry.id
-            ? { ...e, status: 'downloaded', pdfSource: entry.pdfSource, error: undefined }
+            ? {
+                ...e,
+                ...working,
+                status: 'ready',
+                error: 'Opened article in browser — save the PDF from the publisher page',
+              }
             : e,
         ),
       )

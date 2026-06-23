@@ -29,13 +29,20 @@ export const app = express()
 app.use(cors())
 app.use(express.json({ limit: '2mb' }))
 
+export const PDF_RESOLVER_VERSION = '3'
+
 app.get('/api/health', (_req, res) => {
+  const isNetlify =
+    process.env.NETLIFY === 'true' ||
+    Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+    Boolean(process.env.NETLIFY_DEV)
   res.json({
     ok: true,
+    pdfResolverVersion: PDF_RESOLVER_VERSION,
     tlsInsecure: process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0',
     unpaywall: Boolean(process.env.UNPAYWALL_EMAIL),
     kaggle: isKaggleConfigured(),
-    runtime: process.env.NETLIFY === 'true' ? 'netlify' : 'node',
+    runtime: isNetlify ? 'netlify' : 'node',
   })
 })
 

@@ -22,7 +22,8 @@ function isDirectPdfUrl(url) {
     lower.endsWith('.pdf') ||
     lower.endsWith('/pdf') ||
     lower.includes('/pdfft') ||
-    lower.includes('pdf=render')
+    lower.includes('pdf=render') ||
+    (lower.includes('sciencedirect.com/science/article/pii/') && !lower.includes('/pdfft'))
   )
 }
 
@@ -49,9 +50,10 @@ export function scienceDirectPdfCandidates(landingUrl) {
 
   const article = `https://www.sciencedirect.com/science/article/pii/${pii}`
   return [
+    { url: article, source: 'ScienceDirect' },
     {
       url: `${article}/pdfft?isDTMRedir=true&download=true`,
-      source: 'ScienceDirect',
+      source: 'ScienceDirect pdfft',
     },
   ]
 }
@@ -110,7 +112,8 @@ export function scorePdfCandidate(candidate) {
   if (url.includes('/pdfdirect/')) score += 70
   if (url.endsWith('.pdf')) score += 60
   if (url.includes('/pdfft')) score += 55
-  if (candidate.source === 'ScienceDirect') score += 85
+  if (candidate.source === 'ScienceDirect') score += 95
+  if (candidate.source === 'ScienceDirect pdfft') score += 60
   if (url.endsWith('/pdf')) score += 50
   if (candidate.source === 'Unpaywall') score += 45
   if (url.includes('doi.org')) score -= 20

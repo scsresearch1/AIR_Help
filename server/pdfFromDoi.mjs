@@ -230,12 +230,26 @@ export async function fetchPdfBytes(url, referer) {
 }
 
 export async function downloadPdfFromUrl(pdfUrl) {
-  const referer = refererForPdfUrl(pdfUrl)
-  let result = await fetchPdfBytes(pdfUrl, referer)
-  if (!result) {
-    result = await fetchPdfBytes(pdfUrl, pdfUrl)
+  const fetchUrls = [pdfUrl]
+  const pdfft = scienceDirectPdfftFromUrl(pdfUrl)
+  if (pdfft && pdfft !== pdfUrl) fetchUrls.unshift(pdfft)
+
+  for (const url of fetchUrls) {
+    const referer = refererForPdfUrl(url)
+    let result = await fetchPdfBytes(url, referer)
+    if (!result) {
+      result = await fetchPdfBytes(url, url)
+    }
+    if (result) return result
   }
-  return result
+  return null
+}
+
+function scienceDirectPdfftFromUrl(pdfUrl) {
+  const match = pdfUrl.match(/sciencedirect\.com\/science\/article\/pii\/([^/?#]+)/i)
+  if (!match || !/^S[0-9A-Z]+$/i.test(match[1])) return null
+  if (pdfUrl.includes('/pdfft')) return null
+  return `https://www.sciencedirect.com/science/article/pii/${match[1]}/pdfft?isDTMRedir=true&download=true`
 }
 
 export async function downloadPdfForDoi(rawDoi, knownPdfUrl = null) {

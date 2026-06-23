@@ -1,9 +1,10 @@
 [build]
-  command = "npm run build"
+  command = "npm ci && npm run build"
   publish = "dist"
 
 [build.environment]
   NETLIFY = "true"
+  PDF_RESOLVER_VERSION = "3"
 
 [functions]
   directory = "netlify/functions"

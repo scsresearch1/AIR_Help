@@ -26,13 +26,25 @@ export function downloadPdfFromUrl(url: string): Promise<void> {
   })
 }
 
+export function pdfFilenameForDoi(doi: string): string {
+  return `${doi.replace(/\//g, '_')}.pdf`
+}
+
 export function isInvalidScienceDirectPdfUrl(url: string): boolean {
   const match = url.match(/sciencedirect\.com\/science\/article\/pii\/([^/?#]+)/i)
   if (!match) return false
   return !/^S[0-9A-Z]+$/i.test(match[1])
 }
 
-  return `${doi.replace(/\//g, '_')}.pdf`
+/** ScienceDirect article page (works in browser; /pdfft often 403/404 for bots). */
+export function scienceDirectArticleUrl(url: string): string | null {
+  const match = url.match(/sciencedirect\.com\/science\/article\/pii\/([^/?#]+)/i)
+  if (!match || !/^S[0-9A-Z]+$/i.test(match[1])) return null
+  return `https://www.sciencedirect.com/science/article/pii/${match[1]}`
+}
+
+export function browserPdfUrl(url: string): string {
+  return scienceDirectArticleUrl(url) ?? url
 }
 
 export function base64ToPdfBlob(base64: string, contentType = 'application/pdf'): Blob {
