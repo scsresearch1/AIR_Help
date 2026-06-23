@@ -94,10 +94,24 @@ app.get('/api/pdf', async (req, res) => {
       }
 
       const safeName = result.doi.replace(/[^\w.-]/g, '_')
-      res.setHeader('Content-Type', result.contentType ?? 'application/pdf')
+      const contentType = result.contentType ?? 'application/pdf'
+      const source = result.source ?? 'unknown'
+
+      // Netlify Functions mangle raw binary as UTF-8; base64 JSON survives intact.
+      if (req.query.format === 'base64') {
+        return res.json({
+          ok: true,
+          filename: `${safeName}.pdf`,
+          contentType,
+          source,
+          data: result.buffer.toString('base64'),
+        })
+      }
+
+      res.setHeader('Content-Type', contentType)
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}.pdf"`)
-      res.setHeader('X-Pdf-Source', result.source ?? 'unknown')
-      return res.send(result.buffer)
+      res.setHeader('X-Pdf-Source', source)
+      return res.end(result.buffer)
     }
 
     if (result.redirectUrl) {

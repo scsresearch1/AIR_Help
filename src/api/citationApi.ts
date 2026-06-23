@@ -43,7 +43,7 @@ export async function resolvePdfUrlsParallel(
 }
 
 export function pdfDownloadUrl(doi: string, pdfUrl?: string): string {
-  const params = new URLSearchParams({ doi })
+  const params = new URLSearchParams({ doi, format: 'base64' })
   if (pdfUrl) params.set('url', pdfUrl)
   return apiUrl(`/api/pdf?${params}`)
 }

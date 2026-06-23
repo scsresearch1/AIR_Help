@@ -2,7 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { canDownload, pdfDownloadUrl, resolvePdfUrlsParallel } from '../api/citationApi'
 import { apiOfflineHelp, checkApiHealth } from '../config/api'
-import { downloadPdfFromUrl, isValidPdfBlob, pdfFilenameForDoi, savePdfBlob } from '../lib/pdfDownload'
+import {
+  base64ToPdfBlob,
+  downloadPdfFromUrl,
+  isValidPdfBlob,
+  pdfFilenameForDoi,
+  savePdfBlob,
+} from '../lib/pdfDownload'
 import { extractDois, snippetForDoi } from '../lib/doiParser'
 import type { CitationEntry } from '../lib/citationTypes'
 
@@ -195,7 +201,29 @@ export function CitationExtractionPage() {
 
         if (response.ok) {
           const contentType = response.headers.get('content-type') ?? ''
-          if (contentType.includes('pdf')) {
+          if (contentType.includes('json')) {
+            const json = (await response.json()) as {
+              ok?: boolean
+              data?: string
+              filename?: string
+              source?: string
+              contentType?: string
+            }
+            if (json.ok && json.data) {
+              const blob = base64ToPdfBlob(json.data, json.contentType ?? 'application/pdf')
+              if (await isValidPdfBlob(blob)) {
+                savePdfBlob(blob, json.filename ?? filename)
+                setEntries((prev) =>
+                  prev.map((e) =>
+                    e.id === entry.id
+                      ? { ...e, status: 'downloaded', pdfSource: json.source ?? entry.pdfSource, error: undefined }
+                      : e,
+                  ),
+                )
+                return true
+              }
+            }
+          } else if (contentType.includes('pdf')) {
             const blob = await response.blob()
             if (await isValidPdfBlob(blob)) {
               const source = response.headers.get('X-Pdf-Source') ?? entry.pdfSource
