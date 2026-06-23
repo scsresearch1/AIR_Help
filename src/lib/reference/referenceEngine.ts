@@ -71,6 +71,7 @@ async function parseWithDois(text: string): Promise<InstanceType<typeof Cite> | 
 async function parseInput(
   text: string,
   fileFormat: ReferenceFileFormat,
+  styleId?: string | null,
 ): Promise<{ cite: InstanceType<typeof Cite>; parseNote?: string }> {
   const trimmed = text.trim()
   if (!trimmed) throw new Error('File is empty')
@@ -100,11 +101,12 @@ async function parseInput(
     }
   }
 
-  const plainEntries = plaintextToCslEntries(trimmed)
+  const plainEntries = plaintextToCslEntries(trimmed, styleId)
   if (plainEntries.length > 0) {
+    const styleNote = styleId ? ` (${findStyleById(styleId)?.label ?? styleId} format)` : ''
     return {
       cite: new Cite(plainEntries),
-      parseNote: `Parsed ${plainEntries.length} plain-text reference(s) — add DOIs for best accuracy`,
+      parseNote: `Parsed ${plainEntries.length} formatted reference(s)${styleNote} — DOIs improve accuracy`,
     }
   }
 
@@ -118,7 +120,7 @@ async function parseInput(
   }
 
   throw new Error(
-    'Could not parse references. Use BibTeX (.bib), RIS (.ris), or plain text with DOIs (doi: 10.xxxx/…) or numbered reference blocks.',
+    'Could not parse references. Upload a formatted list (IEEE, APA, Vancouver, Nature, etc.), BibTeX (.bib), RIS (.ris), or text with DOIs.',
   )
 }
 
@@ -127,8 +129,9 @@ export async function parseReferenceFile(
   filename?: string,
 ): Promise<ParsedReferences> {
   const fileFormat = detectFileFormat(text, filename)
-  const detected = detectCitationStyle(text, fileFormat)
-  const { cite, parseNote } = await parseInput(text, fileFormat)
+  const blocks = fileFormat === 'plaintext' ? splitPlaintextReferences(text) : []
+  const detected = detectCitationStyle(text, fileFormat, blocks)
+  const { cite, parseNote } = await parseInput(text, fileFormat, detected.styleId)
 
   return {
     cite,

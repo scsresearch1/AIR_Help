@@ -9,7 +9,7 @@ import {
   type ExportFileFormat,
   type ParsedReferences,
 } from '../lib/reference/referenceEngine'
-import { formatFileFormatLabel } from '../lib/reference/referenceFormatDetect'
+import { formatFileFormatLabel, formatConfidenceLabel } from '../lib/reference/referenceFormatDetect'
 import {
   REFERENCE_STYLE_GROUPS,
   findStyleById,
@@ -24,6 +24,7 @@ export function ReferenceManagerPage() {
   const [fileName, setFileName] = useState('')
   const [entryCount, setEntryCount] = useState(0)
   const [detectedLabel, setDetectedLabel] = useState('')
+  const [detectedConfidence, setDetectedConfidence] = useState('')
   const [fileFormatLabel, setFileFormatLabel] = useState('')
   const [targetStyleId, setTargetStyleId] = useState('apa')
   const [exportFormat, setExportFormat] = useState<ExportFileFormat>('txt')
@@ -55,6 +56,7 @@ export function ReferenceManagerPage() {
       setEntryCount(parsed.count)
       setFileFormatLabel(formatFileFormatLabel(parsed.detected.fileFormat))
       setDetectedLabel(parsed.detected.styleLabel ?? 'Unknown')
+      setDetectedConfidence(formatConfidenceLabel(parsed.detected.confidence))
       setTargetStyleId(target.id)
       setParseNote(parsed.parseNote ?? '')
 
@@ -65,6 +67,7 @@ export function ReferenceManagerPage() {
       setEntryCount(0)
       setPreview('')
       setParseNote('')
+      setDetectedConfidence('')
       setError(err instanceof Error ? err.message : 'Could not parse reference file')
     } finally {
       setLoading(false)
@@ -171,8 +174,8 @@ export function ReferenceManagerPage() {
               {fileName ? `Loaded: ${fileName}` : 'Drop your reference file here'}
             </p>
             <p className="reference-dropzone__hint">
-              BibTeX (.bib), RIS (.ris), EndNote (.enw), or plain text (.txt) with DOIs or formatted
-              references
+              Formatted reference list — auto-detects IEEE, APA, Vancouver, Nature, and 20+ other
+              styles. Also accepts BibTeX (.bib), RIS (.ris), and EndNote (.enw).
             </p>
           </div>
         </section>
@@ -202,7 +205,10 @@ export function ReferenceManagerPage() {
               </div>
               <div className="reference-meta__item">
                 <span className="reference-meta__label">Detected style</span>
-                <strong>{detectedLabel}</strong>
+                <strong>
+                  {detectedLabel}
+                  {detectedConfidence ? ` (${detectedConfidence})` : ''}
+                </strong>
               </div>
             </div>
 
@@ -277,9 +283,9 @@ export function ReferenceManagerPage() {
             </div>
 
             <p className="reference-footnote">
-              Styles load from the Citation Style Language repository on first use. Plain-text files
-              with DOIs are enriched via CrossRef; structured .bib / .ris files convert most
-              reliably.
+              We detect citation style from formatting patterns (IEEE, Vancouver, APA, Nature, ACS,
+              etc.) and convert via CSL templates. DOIs enrich metadata via CrossRef; .bib / .ris
+              files are most accurate.
             </p>
           </section>
         )}

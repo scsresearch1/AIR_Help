@@ -1,3 +1,5 @@
+import { detectCitationStyleFromText } from './referenceStyleDetect'
+
 export type ReferenceFileFormat = 'bibtex' | 'ris' | 'endnote' | 'plaintext' | 'unknown'
 
 export interface DetectedReferenceFormat {
@@ -6,41 +8,6 @@ export interface DetectedReferenceFormat {
   styleLabel: string | null
   confidence: 'high' | 'medium' | 'low'
 }
-
-const STYLE_HINTS: { styleId: string; label: string; test: (text: string) => boolean }[] = [
-  {
-    styleId: 'ieee',
-    label: 'IEEE',
-    test: (t) =>
-      /\[\d+\]\s+[A-Z][^,]+,\s*["']/.test(t) ||
-      /\bvol\.\s*\d+/i.test(t) && /\bpp\.\s*\d/i.test(t) && /"[A-Z]/.test(t),
-  },
-  {
-    styleId: 'vancouver',
-    label: 'Vancouver',
-    test: (t) => /\d+\.\s+[A-Z][a-z]+ [A-Z][a-z]+\./.test(t) && /;\d{4}\./.test(t),
-  },
-  {
-    styleId: 'apa',
-    label: 'APA',
-    test: (t) => /\([12]\d{3}[a-z]?\)/.test(t) && /&/.test(t) && /\.\s*https?:\/\/doi\.org/.test(t),
-  },
-  {
-    styleId: 'harvard',
-    label: 'Harvard',
-    test: (t) => /\([12]\d{3}[a-z]?\)/.test(t) && !/\[\d+\]/.test(t.slice(0, 400)),
-  },
-  {
-    styleId: 'mla',
-    label: 'MLA',
-    test: (t) => /"\s*[^"]+,"\s+[A-Z]/.test(t) || /\d+\s+pp\./.test(t),
-  },
-  {
-    styleId: 'nature',
-    label: 'Nature',
-    test: (t) => /et al\. Nature/.test(t) || /Nature \d+/i.test(t),
-  },
-]
 
 export function detectFileFormat(text: string, filename?: string): ReferenceFileFormat {
   const ext = filename?.split('.').pop()?.toLowerCase()
@@ -58,7 +25,11 @@ export function detectFileFormat(text: string, filename?: string): ReferenceFile
   return 'unknown'
 }
 
-export function detectCitationStyle(text: string, fileFormat: ReferenceFileFormat): DetectedReferenceFormat {
+export function detectCitationStyle(
+  text: string,
+  fileFormat: ReferenceFileFormat,
+  blocks: string[] = [],
+): DetectedReferenceFormat {
   if (fileFormat === 'bibtex') {
     return {
       fileFormat,
@@ -84,41 +55,12 @@ export function detectCitationStyle(text: string, fileFormat: ReferenceFileForma
     }
   }
 
-  const sample = text.slice(0, 12_000)
-  for (const hint of STYLE_HINTS) {
-    if (hint.test(sample)) {
-      return {
-        fileFormat,
-        styleId: hint.styleId,
-        styleLabel: hint.label,
-        confidence: 'medium',
-      }
-    }
-  }
-
-  if (/\[\d+\]/.test(sample)) {
-    return {
-      fileFormat,
-      styleId: 'ieee',
-      styleLabel: 'IEEE / numbered (estimated)',
-      confidence: 'low',
-    }
-  }
-
-  if (/\([12]\d{3}[a-z]?\)/.test(sample)) {
-    return {
-      fileFormat,
-      styleId: 'apa',
-      styleLabel: 'Author–date (estimated)',
-      confidence: 'low',
-    }
-  }
-
+  const detected = detectCitationStyleFromText(text, blocks)
   return {
     fileFormat,
-    styleId: null,
-    styleLabel: 'Plain text (style unknown)',
-    confidence: 'low',
+    styleId: detected.styleId,
+    styleLabel: detected.styleLabel,
+    confidence: detected.confidence,
   }
 }
 
@@ -127,8 +69,13 @@ export function formatFileFormatLabel(format: ReferenceFileFormat): string {
     bibtex: 'BibTeX',
     ris: 'RIS',
     endnote: 'EndNote',
-    plaintext: 'Plain text references',
+    plaintext: 'Formatted reference list',
     unknown: 'Unknown',
   }
   return labels[format]
+}
+
+export function formatConfidenceLabel(confidence: DetectedReferenceFormat['confidence']): string {
+  const labels = { high: 'High confidence', medium: 'Likely', low: 'Estimated' }
+  return labels[confidence]
 }
