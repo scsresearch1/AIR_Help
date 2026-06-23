@@ -22,9 +22,44 @@ import {
   type ReferenceFileFormat,
 } from './referenceFormatDetect'
 
-const CSL_BASE =
-  'https://raw.githubusercontent.com/citation-style-language/styles/master'
+const CSL_SOURCES = [
+  (id: string) => `https://www.zotero.org/styles/${id}`,
+  (id: string) => `https://raw.githubusercontent.com/citation-style-language/styles/master/${id}.csl`,
+]
 const registeredTemplates = new Set<string>(['apa', 'vancouver', 'harvard1'])
+
+async function fetchCslXml(cslId: string): Promise<string> {
+  let lastError = ''
+
+  for (const urlFor of CSL_SOURCES) {
+    const url = urlFor(cslId)
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(20_000) })
+      if (!response.ok) {
+        lastError = `${response.status} from ${new URL(url).hostname}`
+        continue
+      }
+      const xml = await response.text()
+      if (xml.includes('<style')) return xml
+      lastError = 'invalid CSL response'
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'fetch failed'
+    }
+  }
+
+  throw new Error(`Could not load citation style "${cslId}" (${lastError})`)
+}
+
+async function ensureCslTemplate(cslId: string): Promise<string> {
+  const templateKey = cslId === 'harvard-cite-them-right' ? 'harvard1' : cslId
+  if (registeredTemplates.has(templateKey)) return templateKey
+
+  const xml = await fetchCslXml(cslId)
+  const cslConfig = plugins.config.get('@csl') as { templates: { add: (n: string, x: string) => void } }
+  cslConfig.templates.add(templateKey, xml)
+  registeredTemplates.add(templateKey)
+  return templateKey
+}
 
 export type ExportFileFormat = 'txt' | 'bib' | 'ris' | 'html'
 
@@ -34,23 +69,6 @@ export interface ParsedReferences {
   detected: DetectedReferenceFormat
   sourceFilename?: string
   parseNote?: string
-}
-
-async function ensureCslTemplate(cslId: string): Promise<string> {
-  const templateKey = cslId === 'harvard-cite-them-right' ? 'harvard1' : cslId
-  if (registeredTemplates.has(templateKey)) return templateKey
-
-  const response = await fetch(`${CSL_BASE}/${cslId}.csl`, {
-    signal: AbortSignal.timeout(15_000),
-  })
-  if (!response.ok) {
-    throw new Error(`Could not load citation style "${cslId}"`)
-  }
-  const xml = await response.text()
-  const cslConfig = plugins.config.get('@csl') as { templates: { add: (n: string, x: string) => void } }
-  cslConfig.templates.add(templateKey, xml)
-  registeredTemplates.add(templateKey)
-  return templateKey
 }
 
 async function parseWithDois(text: string): Promise<InstanceType<typeof Cite> | null> {

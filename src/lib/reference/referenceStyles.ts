@@ -6,6 +6,8 @@ export interface ReferenceStyle {
   csl: string
   /** Bundled in @citation-js/plugin-csl without fetch */
   bundled?: boolean
+  /** Shown when CSL id is a close approximation, not the publisher's official style */
+  note?: string
 }
 
 export interface ReferenceStyleGroup {
@@ -33,7 +35,7 @@ export const REFERENCE_STYLE_GROUPS: ReferenceStyleGroup[] = [
     styles: [
       { id: 'vancouver', label: 'Vancouver', csl: 'vancouver', bundled: true },
       { id: 'ama', label: 'AMA', csl: 'american-medical-association' },
-      { id: 'nlm', label: 'NLM', csl: 'national-library-of-medicine' },
+      { id: 'nlm', label: 'NLM', csl: 'nlm' },
     ],
   },
   {
@@ -56,8 +58,18 @@ export const REFERENCE_STYLE_GROUPS: ReferenceStyleGroup[] = [
     id: 'mathematics',
     label: 'Mathematics',
     styles: [
-      { id: 'ams', label: 'AMS', csl: 'american-mathematical-society' },
-      { id: 'siam', label: 'SIAM', csl: 'siam' },
+      {
+        id: 'ams',
+        label: 'AMS',
+        csl: 'springer-mathphys-brackets',
+        note: 'Closest CSL match — no official AMS style in the repository',
+      },
+      {
+        id: 'siam',
+        label: 'SIAM',
+        csl: 'springer-basic-brackets',
+        note: 'Closest CSL match — no official SIAM style in the repository',
+      },
     ],
   },
   {

@@ -2089,6 +2089,13 @@ a.bento-card--link {
   background: rgba(232, 196, 104, 0.04);
   color: var(--color-text-primary);
   font-size: 0.9375rem;
+  color-scheme: dark;
+}
+
+.reference-controls__select option,
+.reference-controls__select optgroup {
+  background: #141414;
+  color: #f5f5f0;
 }
 
 .reference-controls__select:focus {

@@ -32,6 +32,7 @@ export function ReferenceManagerPage() {
   const [loading, setLoading] = useState(false)
   const [converting, setConverting] = useState(false)
   const [parseNote, setParseNote] = useState('')
+  const [styleNote, setStyleNote] = useState('')
   const [error, setError] = useState('')
 
   const refreshPreview = useCallback(async (parsed: ParsedReferences, styleId: string) => {
@@ -59,6 +60,7 @@ export function ReferenceManagerPage() {
       setDetectedConfidence(formatConfidenceLabel(parsed.detected.confidence))
       setTargetStyleId(target.id)
       setParseNote(parsed.parseNote ?? '')
+      setStyleNote(target.note ?? '')
 
       await refreshPreview(parsed, target.id)
     } catch (err) {
@@ -67,6 +69,7 @@ export function ReferenceManagerPage() {
       setEntryCount(0)
       setPreview('')
       setParseNote('')
+      setStyleNote('')
       setDetectedConfidence('')
       setError(err instanceof Error ? err.message : 'Could not parse reference file')
     } finally {
@@ -95,6 +98,8 @@ export function ReferenceManagerPage() {
 
   async function handleStyleChange(styleId: string) {
     setTargetStyleId(styleId)
+    const style = findStyleById(styleId)
+    setStyleNote(style?.note ?? '')
     if (!citeRef.current) return
 
     setConverting(true)
@@ -214,6 +219,10 @@ export function ReferenceManagerPage() {
 
             {parseNote && (
               <p className="reference-footnote reference-footnote--note">{parseNote}</p>
+            )}
+
+            {styleNote && (
+              <p className="reference-footnote reference-footnote--note">{styleNote}</p>
             )}
 
             <div className="reference-controls">
