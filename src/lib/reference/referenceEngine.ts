@@ -3,7 +3,13 @@ import '@citation-js/plugin-bibtex'
 import '@citation-js/plugin-ris'
 import '@citation-js/plugin-csl'
 import '@citation-js/plugin-doi'
+import { resolveDoisToCsl } from '../../api/referenceApi'
 import { extractDois } from '../doiParser'
+import {
+  endnoteToCslEntries,
+  plaintextToCslEntries,
+  splitPlaintextReferences,
+} from './referencePlaintextParse'
 import {
   findStyleById,
   resolveCslTemplate,
@@ -27,6 +33,7 @@ export interface ParsedReferences {
   count: number
   detected: DetectedReferenceFormat
   sourceFilename?: string
+  parseNote?: string
 }
 
 async function ensureCslTemplate(cslId: string): Promise<string> {
@@ -46,70 +53,72 @@ async function ensureCslTemplate(cslId: string): Promise<string> {
   return templateKey
 }
 
-function splitPlaintextReferences(text: string): string[] {
-  const blocks = text
-    .split(/\n\s*\n+/)
-    .map((b) => b.trim())
-    .filter(Boolean)
-
-  if (blocks.length > 1) return blocks
-
-  const numbered = [...text.matchAll(/^\s*(?:\[\d+\]|\d+\.)\s+/gm)]
-  if (numbered.length >= 2) {
-    const parts: string[] = []
-    for (let i = 0; i < numbered.length; i++) {
-      const start = numbered[i].index ?? 0
-      const end = i + 1 < numbered.length ? (numbered[i + 1].index ?? text.length) : text.length
-      const chunk = text.slice(start, end).trim()
-      if (chunk) parts.push(chunk)
-    }
-    if (parts.length >= 2) return parts
+async function parseWithDois(text: string): Promise<InstanceType<typeof Cite> | null> {
+  const serverItems = await resolveDoisToCsl(text)
+  if (serverItems && serverItems.length > 0) {
+    return new Cite(serverItems)
   }
 
-  return blocks.length ? blocks : [text.trim()]
-}
-
-async function parseWithDois(text: string): Promise<InstanceType<typeof Cite> | null> {
-  const dois = extractDois(text)
-  if (dois.length === 0) return null
   try {
+    const dois = extractDois(text)
+    if (dois.length === 0) return null
     return await Cite.async(dois)
   } catch {
     return null
   }
 }
 
-async function parseInput(text: string, fileFormat: ReferenceFileFormat): Promise<InstanceType<typeof Cite>> {
+async function parseInput(
+  text: string,
+  fileFormat: ReferenceFileFormat,
+): Promise<{ cite: InstanceType<typeof Cite>; parseNote?: string }> {
   const trimmed = text.trim()
   if (!trimmed) throw new Error('File is empty')
 
   if (fileFormat === 'bibtex' || fileFormat === 'ris') {
     try {
       const cite = new Cite(trimmed)
-      if (cite.data.length > 0) return cite
+      if (cite.data.length > 0) return { cite }
     } catch {
       // fall through
     }
   }
 
   if (fileFormat === 'endnote') {
-    throw new Error('EndNote (.enw) import is not supported yet. Export as BibTeX or RIS from your reference manager.')
+    const items = endnoteToCslEntries(trimmed)
+    if (items.length > 0) {
+      return { cite: new Cite(items), parseNote: `Parsed ${items.length} EndNote records` }
+    }
+    throw new Error('Could not parse EndNote file. Try exporting as BibTeX or RIS.')
   }
 
   const fromDois = await parseWithDois(trimmed)
-  if (fromDois && fromDois.data.length > 0) return fromDois
+  if (fromDois && fromDois.data.length > 0) {
+    return {
+      cite: fromDois,
+      parseNote: `Resolved ${fromDois.data.length} reference(s) via DOI metadata`,
+    }
+  }
+
+  const plainEntries = plaintextToCslEntries(trimmed)
+  if (plainEntries.length > 0) {
+    return {
+      cite: new Cite(plainEntries),
+      parseNote: `Parsed ${plainEntries.length} plain-text reference(s) — add DOIs for best accuracy`,
+    }
+  }
 
   for (const attempt of [trimmed, splitPlaintextReferences(trimmed).join('\n\n')]) {
     try {
       const cite = new Cite(attempt)
-      if (cite.data.length > 0) return cite
+      if (cite.data.length > 0) return { cite }
     } catch {
       // continue
     }
   }
 
   throw new Error(
-    'Could not parse references. Upload BibTeX (.bib), RIS (.ris), or a plain-text file with DOIs or recognizable reference blocks.',
+    'Could not parse references. Use BibTeX (.bib), RIS (.ris), or plain text with DOIs (doi: 10.xxxx/…) or numbered reference blocks.',
   )
 }
 
@@ -119,13 +128,14 @@ export async function parseReferenceFile(
 ): Promise<ParsedReferences> {
   const fileFormat = detectFileFormat(text, filename)
   const detected = detectCitationStyle(text, fileFormat)
-  const cite = await parseInput(text, fileFormat)
+  const { cite, parseNote } = await parseInput(text, fileFormat)
 
   return {
     cite,
     count: cite.data.length,
     detected,
     sourceFilename: filename,
+    parseNote,
   }
 }
 

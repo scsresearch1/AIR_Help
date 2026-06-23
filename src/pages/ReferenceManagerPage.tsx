@@ -30,6 +30,7 @@ export function ReferenceManagerPage() {
   const [preview, setPreview] = useState('')
   const [loading, setLoading] = useState(false)
   const [converting, setConverting] = useState(false)
+  const [parseNote, setParseNote] = useState('')
   const [error, setError] = useState('')
 
   const refreshPreview = useCallback(async (parsed: ParsedReferences, styleId: string) => {
@@ -55,6 +56,7 @@ export function ReferenceManagerPage() {
       setFileFormatLabel(formatFileFormatLabel(parsed.detected.fileFormat))
       setDetectedLabel(parsed.detected.styleLabel ?? 'Unknown')
       setTargetStyleId(target.id)
+      setParseNote(parsed.parseNote ?? '')
 
       await refreshPreview(parsed, target.id)
     } catch (err) {
@@ -62,6 +64,7 @@ export function ReferenceManagerPage() {
       setFileName('')
       setEntryCount(0)
       setPreview('')
+      setParseNote('')
       setError(err instanceof Error ? err.message : 'Could not parse reference file')
     } finally {
       setLoading(false)
@@ -202,6 +205,10 @@ export function ReferenceManagerPage() {
                 <strong>{detectedLabel}</strong>
               </div>
             </div>
+
+            {parseNote && (
+              <p className="reference-footnote reference-footnote--note">{parseNote}</p>
+            )}
 
             <div className="reference-controls">
               <div className="reference-controls__field">

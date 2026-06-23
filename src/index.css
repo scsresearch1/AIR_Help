@@ -2138,6 +2138,11 @@ a.bento-card--link {
   line-height: 1.5;
 }
 
+.reference-footnote--note {
+  color: var(--tone-amber);
+  margin: 0;
+}
+
 @keyframes card-enter {
   from {
     opacity: 0;

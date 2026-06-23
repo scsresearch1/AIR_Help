@@ -3,6 +3,7 @@ import express from 'express'
 import cors from 'cors'
 import { downloadPdfForDoi, resolveBestPdfUrl } from './pdfFromDoi.mjs'
 import { downloadDatasetZip, getDatasetSizeBytes, isKaggleConfigured, searchDatasets } from './kaggle.mjs'
+import { fetchCslMetadataForDois } from './references.mjs'
 
 const RESOLVE_CONCURRENCY = 6
 export const NETLIFY_MAX_DOWNLOAD_BYTES = 4_500_000
@@ -248,5 +249,24 @@ app.get('/api/kaggle/download', async (req, res) => {
   } catch (error) {
     console.error('Kaggle download error:', error)
     res.status(500).json({ error: error instanceof Error ? error.message : 'Kaggle download failed' })
+  }
+})
+
+/** Resolve DOIs to CSL-JSON (server-side; avoids browser CORS on doi.org). */
+app.post('/api/references/metadata', async (req, res) => {
+  const dois = req.body?.dois
+  if (!Array.isArray(dois) || dois.length === 0) {
+    return res.status(400).json({ error: 'Provide a non-empty dois array' })
+  }
+  if (dois.length > 100) {
+    return res.status(400).json({ error: 'Maximum 100 DOIs per request' })
+  }
+
+  try {
+    const items = await fetchCslMetadataForDois(dois)
+    res.json({ count: items.length, items })
+  } catch (error) {
+    console.error('Reference metadata error:', error)
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Metadata fetch failed' })
   }
 })
