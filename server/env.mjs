@@ -2,7 +2,15 @@ import { existsSync, readFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 
-const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..')
+function getRootDir() {
+  // esbuild bundles Netlify functions to CJS where import.meta.url is undefined
+  if (typeof import.meta.url === 'string' && import.meta.url.length > 0) {
+    return join(dirname(fileURLToPath(import.meta.url)), '..')
+  }
+  return process.cwd()
+}
+
+const rootDir = getRootDir()
 
 function loadEnvFile() {
   const envPath = join(rootDir, '.env')
