@@ -16,12 +16,33 @@ type StyleScorer = {
 }
 
 function countMatches(text: string, pattern: RegExp): number {
-  return [...text.matchAll(pattern)].length
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`
+  const global = new RegExp(pattern.source, flags)
+  return [...text.matchAll(global)].length
 }
 
 function blockRatio(blocks: string[], test: (b: string) => boolean): number {
   if (blocks.length === 0) return 0
   return blocks.filter(test).length / blocks.length
+}
+
+/** IEEE: Author, "Title," Journal, vol. X, no. Y, Year[, doi: …] — with or without [1] prefix */
+const IEEE_UNNUMBERED =
+  /,\s*["'"“”][^"'"“”]+["'"“”],\s+[^,]+,\s+vol\.\s*\d+,\s*no\.\s*\d+,\s*(?:19|20)\d{2}/i
+
+function isIeeeReferenceBlock(block: string): boolean {
+  return (
+    /^\s*\[\d+\]/.test(block) ||
+    IEEE_UNNUMBERED.test(block) ||
+    (/\bvol\.\s*\d+,\s*no\.\s*\d+,\s*(?:19|20)\d{2}/i.test(block) &&
+      /\bdoi:\s*10\./i.test(block) &&
+      /["'"“”][^"'"“”]+["'"“”],/.test(block))
+  )
+}
+
+/** MLA ends article titles with a period inside quotes: "Title." — not IEEE's "Title," */
+function isMlaReferenceBlock(block: string): boolean {
+  return /["'"“”][^"'"“”]+\.["'"“”]\s+[A-Za-z]/.test(block) && !/\bdoi:\s*10\./i.test(block)
 }
 
 /** Scoring heuristics per citation style (higher = stronger match). */
@@ -32,10 +53,16 @@ const STYLE_SCORERS: StyleScorer[] = [
     score: (t, blocks) => {
       let s = 0
       if (countMatches(t, /^\s*\[\d+\]\s+/gm) >= 2) s += 5
-      if (/\[\d+\]\s+[A-Z][^,]+,\s*["']/.test(t)) s += 4
-      if (/\bvol\.\s*\d+/i.test(t) && /\bno\.\s*\d+/i.test(t)) s += 3
-      if (/\bpp\.\s*\d/i.test(t) && /"[^"]+"/.test(t)) s += 2
-      s += blockRatio(blocks, (b) => /^\s*\[\d+\]/.test(b)) * 4
+      if (/\[\d+\]\s+[A-Z][^,]+,\s*["'“]/.test(t)) s += 4
+
+      const unnumbered = countMatches(t, IEEE_UNNUMBERED)
+      if (unnumbered >= 2) s += 8
+      else if (unnumbered === 1) s += 5
+
+      if (/\bvol\.\s*\d+/i.test(t) && /\bno\.\s*\d+/i.test(t) && /\bdoi:\s*10\./i.test(t)) s += 4
+      if (/["'“”][^"'"“”]+["'“”],/.test(t) && /\bvol\.\s*\d+/i.test(t)) s += 3
+      if (/\bpp\.\s*\d/i.test(t) && /["'“”][^"'"“”]+["'“”]/.test(t)) s += 1
+      s += blockRatio(blocks, isIeeeReferenceBlock) * 5
       return s
     },
   },
@@ -231,11 +258,13 @@ const STYLE_SCORERS: StyleScorer[] = [
     styleId: 'mla',
     score: (t, blocks) => {
       let s = 0
-      if (/"\s*[^"]+,"\s+[A-Z]/.test(t)) s += 4
-      if (/\bvol\.\s*\d+,\s*no\.\s*\d+,\s*\d{4}/.test(t)) s += 4
-      if (/\b\d+\s+pp\./.test(t)) s += 2
-      s += blockRatio(blocks, (b) => /"\s*[^"]+,"/.test(b)) * 3
-      return s
+      if (/["'“”][^"'"“”]+\.["'“”]\s+[A-Za-z]/.test(t)) s += 5
+      if (/\bvol\.\s*\d+,\s*no\.\s*\d+,\s*\d{4}/.test(t) && /["'“”][^"'"“”]+\.["'“”]/.test(t)) s += 4
+      if (/\b\d+\s+pp\./.test(t) && !/\bdoi:\s*10\./i.test(t)) s += 2
+      s += blockRatio(blocks, isMlaReferenceBlock) * 4
+      // "Title," + vol./no./doi is IEEE, not MLA
+      if (/["'“”][^"'"“”]+["'“”],\s+[A-Z]/.test(t) && /\bdoi:\s*10\./i.test(t)) s -= 5
+      return Math.max(0, s)
     },
   },
   {
@@ -325,6 +354,9 @@ export function detectCitationStyleFromText(
     // Broad fallbacks
     if (countMatches(sample, /^\s*\[\d+\]\s+/gm) >= 1) {
       return { styleId: 'ieee', styleLabel: 'IEEE (numbered, estimated)', confidence: 'low' }
+    }
+    if (countMatches(sample, IEEE_UNNUMBERED) >= 1 || blockRatio(refBlocks, isIeeeReferenceBlock) >= 0.5) {
+      return { styleId: 'ieee', styleLabel: 'IEEE (estimated)', confidence: 'low' }
     }
     if (countMatches(sample, /^\s*\d+\.\s+[A-Z]/gm) >= 1) {
       return { styleId: 'vancouver', styleLabel: 'Vancouver / numbered (estimated)', confidence: 'low' }
