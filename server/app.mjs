@@ -4,6 +4,8 @@ import cors from 'cors'
 import { downloadPdfForDoi, resolveBestPdfUrl } from './pdfFromDoi.mjs'
 import { downloadDatasetZip, getDatasetSizeBytes, isKaggleConfigured, searchDatasets } from './kaggle.mjs'
 import { fetchCslMetadataForDois } from './references.mjs'
+import { getConferenceCatalog, getConferencesForDate } from './conferences/index.mjs'
+import { getJournalInsights } from './journals/insights.mjs'
 
 const RESOLVE_CONCURRENCY = 6
 export const NETLIFY_MAX_DOWNLOAD_BYTES = 4_500_000
@@ -268,5 +270,55 @@ app.post('/api/references/metadata', async (req, res) => {
   } catch (error) {
     console.error('Reference metadata error:', error)
     res.status(500).json({ error: error instanceof Error ? error.message : 'Metadata fetch failed' })
+  }
+})
+
+/** Conference submission calendar — aggregated from curated catalogs + page enrichment. */
+app.get('/api/conferences', async (req, res) => {
+  try {
+    const query = typeof req.query.q === 'string' ? req.query.q : ''
+    const publisher = typeof req.query.publisher === 'string' ? req.query.publisher : ''
+    const enrich = req.query.enrich === '1' || req.query.enrich === 'true'
+    const data = await getConferenceCatalog({ query, publisher, enrich })
+    res.json(data)
+  } catch (error) {
+    console.error('Conference catalog error:', error)
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Conference catalog unavailable',
+    })
+  }
+})
+
+app.get('/api/conferences/date/:date', async (req, res) => {
+  const date = req.params.date
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'Date must be YYYY-MM-DD' })
+  }
+  try {
+    const enrich = req.query.enrich === '1' || req.query.enrich === 'true'
+    const data = await getConferencesForDate(date, { enrich })
+    res.json(data)
+  } catch (error) {
+    console.error('Conference date error:', error)
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Conference lookup failed',
+    })
+  }
+})
+
+/** Journal publication intelligence — OpenAlex, CrossRef, DOAJ, publisher page. */
+app.get('/api/journals/insights', async (req, res) => {
+  const name = typeof req.query.name === 'string' ? req.query.name.trim() : ''
+  if (!name) {
+    return res.status(400).json({ error: 'Provide a journal name via ?name=' })
+  }
+  try {
+    const data = await getJournalInsights(name)
+    res.json(data)
+  } catch (error) {
+    console.error('Journal insights error:', error)
+    const message = error instanceof Error ? error.message : 'Journal lookup failed'
+    const status = message.includes('No journal found') ? 404 : 500
+    res.status(status).json({ error: message })
   }
 })

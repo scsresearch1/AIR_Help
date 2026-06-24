@@ -6,6 +6,8 @@ import { LandingPage } from './pages/LandingPage'
 import { CitationExtractionPage } from './pages/CitationExtractionPage'
 import { StructuredDataExtractionPage } from './pages/StructuredDataExtractionPage'
 import { ReferenceManagerPage } from './pages/ReferenceManagerPage'
+import { ConferenceTrackerPage } from './pages/ConferenceTrackerPage'
+import { JournalInsightsPage } from './pages/JournalInsightsPage'
 
 export default function App() {
   return (
@@ -49,6 +51,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ReferenceManagerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/conference-tracker"
+            element={
+              <ProtectedRoute>
+                <ConferenceTrackerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/journal-insights"
+            element={
+              <ProtectedRoute>
+                <JournalInsightsPage />
               </ProtectedRoute>
             }
           />
