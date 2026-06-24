@@ -20,25 +20,12 @@ const SERVICES = [
     ),
   },
   {
-    id: 'literature-review',
-    title: 'Literature Review Assistant',
-    description: 'Synthesize findings across multiple papers.',
-    status: 'planned' as const,
-    tone: 'violet' as const,
-    index: '02',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-      </svg>
-    ),
-  },
-  {
     id: 'data-extraction',
     title: 'Structured Data Extraction',
     description: 'Search Kaggle by topic and download structured datasets.',
     status: 'coming-soon' as const,
     tone: 'emerald' as const,
-    index: '03',
+    index: '02',
     route: '/data-extraction',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -52,7 +39,7 @@ const SERVICES = [
     description: 'Detect citation style, convert between formats, and download.',
     status: 'coming-soon' as const,
     tone: 'amber' as const,
-    index: '04',
+    index: '03',
     route: '/reference-manager',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">

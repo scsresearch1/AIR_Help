@@ -457,8 +457,8 @@ export function CitationExtractionPage() {
                 <tbody>
                   {entries.map((entry, index) => (
                     <tr key={entry.id} className={`citation-table__row citation-table__row--${entry.status}`}>
-                      <td className="citation-table__num">{index + 1}</td>
-                      <td className="citation-table__doi">
+                      <td className="citation-table__num" data-label="#">{index + 1}</td>
+                      <td className="citation-table__doi" data-label="DOI">
                         <a
                           href={`https://doi.org/${entry.doi}`}
                           target="_blank"
@@ -470,10 +470,10 @@ export function CitationExtractionPage() {
                           <span className="citation-table__snippet">{entry.snippet}</span>
                         )}
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <StatusBadge status={entry.status} />
                       </td>
-                      <td className="citation-table__source">
+                      <td className="citation-table__source" data-label="PDF URL">
                         {entry.status === 'resolving' ? (
                           <span className="citation-table__source-label">…</span>
                         ) : (
@@ -487,7 +487,7 @@ export function CitationExtractionPage() {
                           </>
                         )}
                       </td>
-                      <td className="citation-table__actions">
+                      <td className="citation-table__actions" data-label="Actions">
                         <button
                           type="button"
                           className="btn btn--ghost btn--sm"

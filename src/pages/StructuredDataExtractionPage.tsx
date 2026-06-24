@@ -362,8 +362,8 @@ export function StructuredDataExtractionPage() {
                           disabled={entry.status === 'downloaded' || isDownloading || tooLarge}
                         />
                       </td>
-                      <td className="data-table__num">{index + 1}</td>
-                      <td className="data-table__dataset">
+                      <td className="data-table__num" data-label="#">{index + 1}</td>
+                      <td className="data-table__dataset" data-label="Dataset">
                         <a
                           href={entry.url}
                           target="_blank"
@@ -378,10 +378,10 @@ export function StructuredDataExtractionPage() {
                         )}
                         {entry.error && <span className="data-table__error">{entry.error}</span>}
                       </td>
-                      <td className="data-table__owner">{entry.owner}</td>
-                      <td className="data-table__size">{entry.sizeLabel}</td>
-                      <td className="data-table__updated">{entry.lastUpdated}</td>
-                      <td>
+                      <td className="data-table__owner" data-label="Owner">{entry.owner}</td>
+                      <td className="data-table__size" data-label="Size">{entry.sizeLabel}</td>
+                      <td className="data-table__updated" data-label="Updated">{entry.lastUpdated}</td>
+                      <td data-label="Status">
                         {tooLarge ? (
                           <span className="data-status data-status--too-large">Use Kaggle</span>
                         ) : (
