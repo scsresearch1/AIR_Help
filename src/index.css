@@ -1192,14 +1192,6 @@ body {
   z-index: 1;
 }
 
-.bento-card__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
 .bento-card__icon {
   flex-shrink: 0;
   width: 48px;
@@ -1212,6 +1204,7 @@ body {
   border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
   color: var(--tone);
   box-shadow: 0 0 24px color-mix(in srgb, var(--tone) 20%, transparent);
+  margin-bottom: 1rem;
 }
 
 .bento-card--featured .bento-card__icon {
@@ -1260,37 +1253,6 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: color-mix(in srgb, var(--tone-gold) 70%, var(--color-text-muted));
-}
-
-.status-badge {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 0.5625rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.35rem 0.6rem;
-  border-radius: 4px;
-}
-
-.status-badge--coming-soon {
-  background: rgba(232, 196, 104, 0.18);
-  color: var(--tone-gold);
-  border: 1px solid rgba(232, 196, 104, 0.4);
-  box-shadow: 0 0 16px rgba(232, 196, 104, 0.15);
-}
-
-.status-badge--planned {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-}
-
-.status-badge--active {
-  background: rgba(52, 211, 153, 0.15);
-  color: var(--tone-emerald);
-  border: 1px solid rgba(52, 211, 153, 0.35);
-  box-shadow: 0 0 16px rgba(52, 211, 153, 0.12);
 }
 
 a.bento-card--link {
