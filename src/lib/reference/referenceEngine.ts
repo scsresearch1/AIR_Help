@@ -3,10 +3,11 @@ import '@citation-js/plugin-bibtex'
 import '@citation-js/plugin-ris'
 import '@citation-js/plugin-csl'
 import '@citation-js/plugin-doi'
-import { resolveDoisToCsl } from '../../api/referenceApi'
-import { extractDois } from '../doiParser'
+import { fetchCslMetadataForDois } from '../../api/referenceApi'
+import { extractDois, normalizeDoi } from '../doiParser'
 import {
   endnoteToCslEntries,
+  parsePlaintextBlock,
   plaintextToCslEntries,
   splitPlaintextReferences,
 } from './referencePlaintextParse'
@@ -71,18 +72,66 @@ export interface ParsedReferences {
   parseNote?: string
 }
 
-async function parseWithDois(text: string): Promise<InstanceType<typeof Cite> | null> {
-  const serverItems = await resolveDoisToCsl(text)
-  if (serverItems && serverItems.length > 0) {
-    return new Cite(serverItems)
+async function parseReferencesHybrid(
+  text: string,
+  styleId?: string | null,
+): Promise<{ cite: InstanceType<typeof Cite>; parseNote?: string } | null> {
+  const blocks = splitPlaintextReferences(text)
+  if (blocks.length === 0) return null
+
+  const metadataByDoi = new Map<string, unknown>()
+  const allDois = extractDois(text)
+
+  if (allDois.length > 0) {
+    try {
+      let items = await fetchCslMetadataForDois(allDois)
+      if (items.length === 0) {
+        try {
+          const cite = await Cite.async(allDois)
+          items = cite.data
+        } catch {
+          // Continue with formatted-text parsing only.
+        }
+      }
+      for (const item of items) {
+        const record = item as { DOI?: string }
+        if (record?.DOI) metadataByDoi.set(normalizeDoi(record.DOI), record)
+      }
+    } catch {
+      // Continue with formatted-text parsing only.
+    }
   }
 
-  try {
-    const dois = extractDois(text)
-    if (dois.length === 0) return null
-    return await Cite.async(dois)
-  } catch {
-    return null
+  const entries: unknown[] = []
+  let doiCount = 0
+  let plainCount = 0
+
+  for (const block of blocks) {
+    const blockDoi = extractDois(block)[0]
+    const meta = blockDoi ? metadataByDoi.get(normalizeDoi(blockDoi)) : undefined
+
+    if (meta) {
+      entries.push(meta)
+      doiCount++
+      continue
+    }
+
+    const plain = parsePlaintextBlock(block, styleId)
+    if (plain) {
+      entries.push(plain)
+      plainCount++
+    }
+  }
+
+  if (entries.length === 0) return null
+
+  const parts: string[] = []
+  if (doiCount > 0) parts.push(`${doiCount} via DOI metadata`)
+  if (plainCount > 0) parts.push(`${plainCount} from formatted text`)
+
+  return {
+    cite: new Cite(entries),
+    parseNote: `Loaded ${entries.length} reference(s) (${parts.join(', ')})`,
   }
 }
 
@@ -111,13 +160,8 @@ async function parseInput(
     throw new Error('Could not parse EndNote file. Try exporting as BibTeX or RIS.')
   }
 
-  const fromDois = await parseWithDois(trimmed)
-  if (fromDois && fromDois.data.length > 0) {
-    return {
-      cite: fromDois,
-      parseNote: `Resolved ${fromDois.data.length} reference(s) via DOI metadata`,
-    }
-  }
+  const hybrid = await parseReferencesHybrid(trimmed, styleId)
+  if (hybrid) return hybrid
 
   const plainEntries = plaintextToCslEntries(trimmed, styleId)
   if (plainEntries.length > 0) {

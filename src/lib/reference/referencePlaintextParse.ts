@@ -163,7 +163,7 @@ function extractJournal(block: string): string | undefined {
   return undefined
 }
 
-function parsePlaintextBlock(block: string, styleId?: string | null): CslEntry | null {
+export function parsePlaintextBlock(block: string, styleId?: string | null): CslEntry | null {
   const text = block.trim()
   if (text.length < 20) return null
 
