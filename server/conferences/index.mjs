@@ -101,3 +101,76 @@ export async function getConferencesForDate(date, options = {}) {
     sources: catalog.sources,
   }
 }
+
+function scoreConferenceMatch(conf, themes, keyTerms) {
+  const haystack = [
+    conf.conferenceName,
+    conf.acronym ?? '',
+    conf.publisher ?? '',
+    conf.location?.formatted ?? '',
+  ]
+    .join(' ')
+    .toLowerCase()
+
+  let score = 0
+  const matchedThemes = []
+
+  for (const theme of themes) {
+    const themeLower = theme.toLowerCase()
+    const themeWords = themeLower.split(/\s+/).filter((w) => w.length > 3)
+    let themeHit = false
+
+    if (haystack.includes(themeLower)) {
+      score += 8
+      themeHit = true
+    }
+
+    for (const word of themeWords) {
+      if (haystack.includes(word)) {
+        score += 2
+        themeHit = true
+      }
+    }
+
+    if (themeHit) matchedThemes.push(theme)
+  }
+
+  for (const term of keyTerms) {
+    if (haystack.includes(term.toLowerCase())) score += 3
+  }
+
+  return { score, matchedThemes: [...new Set(matchedThemes)] }
+}
+
+export async function recommendConferencesFromThemes(themes, keyTerms, limit = 12) {
+  const conferences = await loadConferences({ enrich: false })
+  const scored = conferences
+    .map((conf) => {
+      const { score, matchedThemes } = scoreConferenceMatch(conf, themes, keyTerms)
+      return { conf, score, matchedThemes }
+    })
+    .filter((item) => item.score > 0)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.conf.paperSubmissionDueDate.localeCompare(b.conf.paperSubmissionDueDate),
+    )
+    .slice(0, limit)
+
+  const maxScore = scored[0]?.score || 1
+
+  return scored.map((item, index) => ({
+    rank: index + 1,
+    id: item.conf.id,
+    conferenceName: item.conf.conferenceName,
+    acronym: item.conf.acronym ?? null,
+    fitScore: Math.round((item.score / maxScore) * 100),
+    paperSubmissionDueDate: item.conf.paperSubmissionDueDate,
+    conferenceDate: item.conf.conferenceDate ?? null,
+    authorRegistrationCost: item.conf.authorRegistrationCost ?? null,
+    location: item.conf.location ?? null,
+    conferencePageUrl: item.conf.conferencePageUrl ?? null,
+    publisher: item.conf.publisher ?? null,
+    matchedThemes: item.matchedThemes,
+  }))
+}

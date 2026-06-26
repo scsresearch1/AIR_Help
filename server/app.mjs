@@ -6,6 +6,7 @@ import { downloadDatasetZip, getDatasetSizeBytes, isKaggleConfigured, searchData
 import { fetchCslMetadataForDois } from './references.mjs'
 import { getConferenceCatalog, getConferencesForDate } from './conferences/index.mjs'
 import { getJournalInsights } from './journals/insights.mjs'
+import { recommendJournalsFromAbstract } from './journals/matchAbstract.mjs'
 
 const RESOLVE_CONCURRENCY = 6
 export const NETLIFY_MAX_DOWNLOAD_BYTES = 4_500_000
@@ -319,6 +320,29 @@ app.get('/api/journals/insights', async (req, res) => {
     console.error('Journal insights error:', error)
     const message = error instanceof Error ? error.message : 'Journal lookup failed'
     const status = message.includes('No journal found') ? 404 : 500
+    res.status(status).json({ error: message })
+  }
+})
+
+/** Recommend journals from manuscript abstract via OpenAlex similarity search. */
+app.post('/api/journals/recommend', async (req, res) => {
+  const abstract = typeof req.body?.abstract === 'string' ? req.body.abstract : ''
+  if (!abstract.trim()) {
+    return res.status(400).json({ error: 'Provide an abstract in the request body.' })
+  }
+  try {
+    const data = await recommendJournalsFromAbstract(abstract)
+    res.json(data)
+  } catch (error) {
+    console.error('Journal recommend error:', error)
+    const message = error instanceof Error ? error.message : 'Journal recommendation failed'
+    const status =
+      message.includes('at least') ||
+      message.includes('too long') ||
+      message.includes('No closely') ||
+      message.includes('No suitable')
+        ? 400
+        : 500
     res.status(status).json({ error: message })
   }
 })

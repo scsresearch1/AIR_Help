@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { PublicationWorkflowBar } from '../components/PublicationWorkflowBar'
 import { fetchConferenceCatalog, fetchConferencesForDate } from '../api/conferenceApi'
 import {
   formatVenueLocation,
   type CalendarDay,
   type ConferenceRecord,
 } from '../lib/conferenceTypes'
+import {
+  clearPublicationWorkflow,
+  loadPublicationWorkflow,
+  type PublicationWorkflowState,
+} from '../lib/publicationWorkflow'
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -45,6 +51,14 @@ export function ConferenceTrackerPage() {
   const [loadingCatalog, setLoadingCatalog] = useState(true)
   const [loadingDay, setLoadingDay] = useState(false)
   const [error, setError] = useState('')
+  const [workflow, setWorkflow] = useState<PublicationWorkflowState | null>(() =>
+    loadPublicationWorkflow(),
+  )
+
+  const recommendedDateSet = useMemo(() => {
+    if (!workflow?.conferenceRecommendations?.length) return new Set<string>()
+    return new Set(workflow.conferenceRecommendations.map((c) => c.paperSubmissionDueDate))
+  }, [workflow])
 
   const countByDate = useMemo(() => {
     const map = new Map<string, number>()
@@ -88,10 +102,17 @@ export function ConferenceTrackerPage() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      const wf = loadPublicationWorkflow()
+      setWorkflow(wf)
+      const searchQ = wf?.conferenceSearchQuery ?? ''
+
       setLoadingCatalog(true)
       setError('')
       try {
-        const data = await fetchConferenceCatalog()
+        if (searchQ) setQuery(searchQ)
+        const data = await fetchConferenceCatalog({
+          query: searchQ || undefined,
+        })
         if (cancelled) return
         setCalendar(data.calendar)
         setTotal(data.total)
@@ -112,6 +133,28 @@ export function ConferenceTrackerPage() {
       cancelled = true
     }
   }, [])
+
+  function handleClearWorkflow() {
+    clearPublicationWorkflow()
+    setWorkflow(null)
+    setQuery('')
+    setPublisher('')
+    setSelectedDate(null)
+    setDayConferences([])
+    setLoadingCatalog(true)
+    setError('')
+    void fetchConferenceCatalog().then((data) => {
+      setCalendar(data.calendar)
+      setTotal(data.total)
+      setSources(data.sources)
+      const pubs = [
+        ...new Set(data.conferences.map((c) => c.publisher).filter(Boolean) as string[]),
+      ].sort()
+      setPublishers(pubs)
+    }).catch((err) => {
+      setError(err instanceof Error ? err.message : 'Unable to load conference catalog')
+    }).finally(() => setLoadingCatalog(false))
+  }
 
   async function handleSelectDate(iso: string) {
     setSelectedDate(iso)
@@ -158,12 +201,84 @@ export function ConferenceTrackerPage() {
           </Link>
           <h1 className="research-tool-header__title">Conference Tracker</h1>
           <p className="research-tool-header__subtitle">
-            Submission deadline calendar for IEEE, ACM, and allied research venues
+            Submission deadline calendar — linked to your abstract-based publication plan
           </p>
         </div>
       </header>
 
       <main className="research-tool-main">
+        <PublicationWorkflowBar
+          workflow={workflow}
+          activeStep="conferences"
+          onClear={handleClearWorkflow}
+        />
+
+        {workflow?.conferenceRecommendations && workflow.conferenceRecommendations.length > 0 && (
+          <section className="research-tool-panel" aria-label="Conferences matched to your abstract">
+            <h2 className="research-tool-panel__title">Conferences Matched to Your Abstract</h2>
+            <p className="research-tool-panel__meta">
+              Ranked from your manuscript themes ·{' '}
+              <Link to="/journal-insights" className="workflow-bar__link">
+                Return to journal recommendations
+              </Link>
+            </p>
+            <div className="research-tool-table-wrap">
+              <table className="data-table research-tool-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Rank</th>
+                    <th scope="col">Conference Name</th>
+                    <th scope="col">Fit Score</th>
+                    <th scope="col">Paper Submission Due Date</th>
+                    <th scope="col">Conference Date</th>
+                    <th scope="col">Matched Themes</th>
+                    <th scope="col">Venue Location</th>
+                    <th scope="col">Official URL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workflow.conferenceRecommendations.map((conf) => (
+                    <tr key={conf.id}>
+                      <td data-label="Rank">{conf.rank}</td>
+                      <td data-label="Conference Name">
+                        <span className="data-table__title">{conf.conferenceName}</span>
+                        {conf.publisher && (
+                          <span className="data-table__subtitle">{conf.publisher}</span>
+                        )}
+                      </td>
+                      <td data-label="Fit Score">
+                        <span className="journal-fit-score">{conf.fitScore}%</span>
+                      </td>
+                      <td data-label="Paper Submission Due Date">
+                        {formatShortDate(conf.paperSubmissionDueDate)}
+                      </td>
+                      <td data-label="Conference Date">{formatShortDate(conf.conferenceDate)}</td>
+                      <td data-label="Matched Themes">
+                        {conf.matchedThemes.length ? conf.matchedThemes.join(', ') : '—'}
+                      </td>
+                      <td data-label="Venue Location">{formatVenueLocation(conf.location)}</td>
+                      <td data-label="Official URL">
+                        {conf.conferencePageUrl ? (
+                          <a
+                            href={conf.conferencePageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="data-table__ref"
+                          >
+                            Visit official page
+                          </a>
+                        ) : (
+                          'Not available'
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
         <section className="research-tool-toolbar" aria-label="Conference filters">
           <div className="research-tool-toolbar__field">
             <label className="research-tool-toolbar__label" htmlFor="conf-search">
@@ -267,6 +382,8 @@ export function ConferenceTrackerPage() {
                 cell.iso ===
                 `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 
+              const isRecommended = recommendedDateSet.has(cell.iso)
+
               return (
                 <button
                   key={cell.iso}
@@ -276,6 +393,7 @@ export function ConferenceTrackerPage() {
                     count > 0 ? 'submission-calendar__cell--active' : '',
                     isSelected ? 'submission-calendar__cell--selected' : '',
                     isToday ? 'submission-calendar__cell--today' : '',
+                    isRecommended ? 'submission-calendar__cell--workflow' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
