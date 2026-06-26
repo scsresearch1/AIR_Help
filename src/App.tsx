@@ -8,12 +8,14 @@ import { StructuredDataExtractionPage } from './pages/StructuredDataExtractionPa
 import { ReferenceManagerPage } from './pages/ReferenceManagerPage'
 import { ConferenceTrackerPage } from './pages/ConferenceTrackerPage'
 import { JournalInsightsPage } from './pages/JournalInsightsPage'
+import { DeveloperFooter } from './components/DeveloperFooter'
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
+        <>
+          <Routes>
           <Route
             path="/login"
             element={
@@ -71,7 +73,9 @@ export default function App() {
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
+          <DeveloperFooter />
+        </>
       </BrowserRouter>
     </AuthProvider>
   )

@@ -803,11 +803,24 @@ body {
   opacity: 0.8;
 }
 
-.login-page__copyright {
+/* Global developer credit — all pages */
+.app-developer-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding:
+    0.5rem
+    var(--page-padding-x)
+    max(0.5rem, env(safe-area-inset-bottom));
   text-align: center;
-  margin-top: 1.5rem;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
+  letter-spacing: 0.03em;
   color: var(--color-text-muted);
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(8, 8, 7, 0.94) 55%, transparent);
 }
 
 /* Desktop split layout */
@@ -2415,12 +2428,6 @@ a.bento-card--link {
 
   .landing-header__user {
     display: none;
-  }
-
-  .login-page__copyright {
-    font-size: 0.6875rem;
-    line-height: 1.5;
-    padding: 0 0.5rem;
   }
 
   .scientific-bg__orb--1 {

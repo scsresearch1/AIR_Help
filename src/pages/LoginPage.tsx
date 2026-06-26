@@ -261,10 +261,6 @@ export function LoginPage() {
               </div>
             </div>
           </div>
-
-          <p className="login-page__copyright">
-            © {new Date().getFullYear()} SCS-Research Minds
-          </p>
         </div>
       </div>
     </div>
